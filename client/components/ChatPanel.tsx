@@ -7,6 +7,8 @@ type Props = {
   courseId: string;
 };
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 export default function ChatPanel({ courseId }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -15,17 +17,53 @@ export default function ChatPanel({ courseId }: Props) {
     },
   ]);
   const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [conversationId] = useState(() => `conv-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = input.trim();
-    if (!trimmed) return;
+    if (!trimmed || isLoading) return;
 
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: trimmed },
-      { role: "assistant", content: "응답 예시: 백엔드 연결 예정입니다." },
-    ]);
+    // 사용자 메시지 즉시 추가
+    const userMessage: ChatMessage = { role: "user", content: trimmed };
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat/ask`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          course_id: courseId,
+          question: trimmed,
+          conversation_id: conversationId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API 오류: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const assistantMessage: ChatMessage = {
+        role: "assistant",
+        content: data.answer || "답변을 받을 수 없습니다.",
+      };
+
+      setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("채팅 API 오류:", error);
+      const errorMessage: ChatMessage = {
+        role: "assistant",
+        content: `오류가 발생했습니다: ${error instanceof Error ? error.message : "알 수 없는 오류"}. 백엔드 서버가 실행 중인지 확인하세요.`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const transcript = useMemo(
@@ -59,19 +97,21 @@ export default function ChatPanel({ courseId }: Props) {
       <div className="border-t border-slate-800 p-3">
         <div className="flex gap-2">
           <input
-            className="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500"
-            placeholder="질문을 입력하세요..."
+            className="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-500 disabled:opacity-50"
+            placeholder={isLoading ? "답변 대기 중..." : "질문을 입력하세요..."}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleSend();
+              if (e.key === "Enter" && !isLoading) handleSend();
             }}
+            disabled={isLoading}
           />
           <button
-            className="rounded-lg bg-sky-500 px-4 text-sm font-semibold text-white shadow hover:bg-sky-600"
+            className="rounded-lg bg-sky-500 px-4 text-sm font-semibold text-white shadow hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSend}
+            disabled={isLoading || !input.trim()}
           >
-            전송
+            {isLoading ? "전송 중..." : "전송"}
           </button>
         </div>
       </div>

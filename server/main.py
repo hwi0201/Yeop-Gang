@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,9 +14,11 @@ def create_app() -> FastAPI:
     Create and configure the FastAPI application.
     Routers are split so backend A (ai) and backend B (api) can work independently.
     """
-    # Load environment variables from .env before settings are instantiated
+    # Load environment variables from project root .env before settings are instantiated
     try:
-        load_dotenv()
+        project_root = Path(__file__).resolve().parent.parent  # .../server -> project root
+        env_path = project_root / ".env"
+        load_dotenv(dotenv_path=env_path)
     except Exception:
         # Ignore .env read errors (permission or missing); rely on process env instead
         pass

@@ -26,7 +26,7 @@ export default function StudentPlayPage({ params }: Props) {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <VideoPlayer />
+          <VideoPlayer src={`http://localhost:8000/api/video/${course_id}`} />
         </div>
         <div className="h-[520px] lg:col-span-1">
           <ChatPanel courseId={course_id} />

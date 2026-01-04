@@ -17,4 +17,5 @@ sqlmodel==0.0.22
 sqlalchemy==2.0.35
 aiosqlite==0.20.0
 python-multipart==0.0.12
+pydub==0.25.1
 

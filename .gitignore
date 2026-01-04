@@ -8,12 +8,26 @@
 # Python
 __pycache__/
 *.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
 .python-version
 .venv/
 venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
 
 # FastAPI / data
 data/
+# 데이터베이스 파일
+*.db
+*.sqlite
+*.sqlite3
+# ChromaDB 벡터 데이터베이스
+**/chroma/
 
 # Node / Next.js
 node_modules/
@@ -21,12 +35,54 @@ node_modules/
 out/
 dist/
 .turbo/
+.pnpm-store/
 
 # Editor
 .idea/
 .vscode/
 .cursor/
+*.swp
+*.swo
+*~
 
 # OS
 Thumbs.db
+Desktop.ini
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Media files (대용량 파일 제외)
+# ref 폴더 구조는 유지하되, 내부 파일은 제외 (폴더와 .gitkeep은 포함)
+ref/audio/*
+!ref/audio/.gitkeep
+ref/video/*
+!ref/video/.gitkeep
+*.mp4
+*.mp3
+*.avi
+*.mov
+*.wmv
+*.flv
+*.mkv
+*.wav
+*.m4a
+*.aac
+*.ogg
+
+# Logs and temporary files
+*.log.*
+logs/
+*.tmp
+*.temp
+.cache/
+tmp/
+temp/
+
+# Coverage reports
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
 

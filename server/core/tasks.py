@@ -49,8 +49,30 @@ def process_course_assets(
 
         texts: list[str] = []
         if video_path:
-            transcript = transcribe_video(str(video_path))
-            texts.append(transcript)
+            transcript_result = transcribe_video(str(video_path), settings=settings)
+            transcript_text = transcript_result.get("text", "")
+            segments = transcript_result.get("segments", [])
+            if transcript_text:
+                # 병합 텍스트 전체를 하나의 문서로 저장
+                texts.append(transcript_text)
+                # 세그먼트별 메타데이터 포함하여 추가 저장
+                for idx, seg in enumerate(segments):
+                    seg_text = seg.get("text", "")
+                    if not seg_text:
+                        continue
+                    seg_meta = {
+                        "course_id": course_id,
+                        "instructor_id": instructor_id,
+                        "source": video_path.name,
+                        "start_time": seg.get("start"),
+                        "end_time": seg.get("end"),
+                        "segment_index": idx,
+                    }
+                    pipeline.ingest_texts(
+                        [seg_text],
+                        course_id=course_id,
+                        metadata=seg_meta,
+                    )
             vid = Video(
                 course_id=course_id,
                 filename=video_path.name,

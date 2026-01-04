@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from ai.config import AISettings
 
@@ -12,7 +12,15 @@ def get_chroma_client(settings: AISettings) -> "chromadb.ClientAPI":
     return chromadb.PersistentClient(path=settings.chroma_db_path)
 
 
-def get_collection(client: "chromadb.ClientAPI", name: str = "courses") -> Any:
-    """Return a collection for course-scoped embeddings."""
-    return client.get_or_create_collection(name=name)
+def get_collection(
+    client: "chromadb.ClientAPI",
+    settings: AISettings,
+    name: Optional[str] = None,
+) -> Any:
+    """
+    Return a collection for course-scoped embeddings.
+    Use embedding_model suffix to avoid dimension mismatch across models.
+    """
+    coll_name = name or f"courses-{settings.embedding_model}"
+    return client.get_or_create_collection(name=coll_name)
 
