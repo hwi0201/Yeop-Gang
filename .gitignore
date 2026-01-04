@@ -54,7 +54,11 @@ Desktop.ini
 .Trashes
 
 # Media files (대용량 파일 제외)
-ref/
+# ref 폴더 구조는 유지하되, 내부 파일은 제외 (폴더와 .gitkeep은 포함)
+ref/audio/*
+!ref/audio/.gitkeep
+ref/video/*
+!ref/video/.gitkeep
 *.mp4
 *.mp3
 *.avi
