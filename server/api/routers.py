@@ -1,3 +1,6 @@
+# dh: 이 파일은 기존 호환성을 위해 유지됩니다.
+# dh: 새로운 보안 기능이 포함된 API는 server/api/dh_routers.py를 사용하세요.
+
 from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile
 from fastapi.params import Form, File
 from fastapi.responses import FileResponse
@@ -37,6 +40,7 @@ async def upload_course_assets(
     instructor_id: str = Form(...),
     course_id: str = Form(...),
     video: UploadFile | None = File(None),
+    audio: UploadFile | None = File(None),
     pdf: UploadFile | None = File(None),
     session: Session = Depends(get_session),
 ) -> UploadResponse:
@@ -57,6 +61,7 @@ async def upload_course_assets(
         instructor_id=instructor_id,
         course_id=course_id,
         video=video,
+        audio=audio,
         pdf=pdf,
     )
 
@@ -65,6 +70,7 @@ async def upload_course_assets(
         course_id=course_id,
         instructor_id=instructor_id,
         video_path=paths.get("video"),
+        audio_path=paths.get("audio"),
         pdf_path=paths.get("pdf"),
     )
     return UploadResponse(
@@ -80,7 +86,8 @@ def status(course_id: str, session: Session = Depends(get_session)) -> StatusRes
     if not course:
         return StatusResponse(course_id=course_id, status="not_found", progress=0)
 
-    progress = 0 if course.status == CourseStatus.processing else 100
+    # 실제 진행도 필드 사용
+    progress = getattr(course, 'progress', 0) if course.status == CourseStatus.processing else 100
     return StatusResponse(
         course_id=course_id,
         status=course.status.value,
@@ -96,12 +103,14 @@ _conversation_history: dict[str, list[dict[str, str]]] = {}
 @router.get("/video/{course_id}")
 def get_video(course_id: str, session: Session = Depends(get_session)) -> FileResponse:
     """
-    Get video file for a course. Returns the first video file found for the course.
+    Get video/audio file for a course. Returns the first video or audio file found for the course.
+    Supports both mp4 (video) and mp3 (audio) files.
     For testing: can also serve files from ref/video/ folder.
     """
-    # Try to get video from database (only video files with .mp4 extension)
+    # Try to get video/audio from database
     course = session.get(Course, course_id)
     if course:
+        # 우선 video 타입 파일 확인 (mp4 우선)
         videos = session.exec(
             select(Video).where(
                 Video.course_id == course_id,
@@ -110,9 +119,30 @@ def get_video(course_id: str, session: Session = Depends(get_session)) -> FileRe
         ).all()
         for vid in videos:
             video_path = Path(vid.storage_path)
-            # Only return files that exist and are .mp4 files (not .mp3 audio)
-            if video_path.exists() and video_path.suffix.lower() == ".mp4":
-                return FileResponse(video_path, media_type="video/mp4")
+            if video_path.exists():
+                suffix = video_path.suffix.lower()
+                if suffix == ".mp4":
+                    return FileResponse(video_path, media_type="video/mp4")
+                elif suffix in [".avi", ".mov", ".mkv", ".webm"]:
+                    return FileResponse(video_path, media_type="video/mp4")  # 기본 비디오 타입
+        
+        # audio 타입 파일 확인 (mp3 포함)
+        audios = session.exec(
+            select(Video).where(
+                Video.course_id == course_id,
+                Video.filetype == "audio"
+            )
+        ).all()
+        for audio in audios:
+            audio_path = Path(audio.storage_path)
+            if audio_path.exists():
+                suffix = audio_path.suffix.lower()
+                if suffix == ".mp3":
+                    return FileResponse(audio_path, media_type="audio/mpeg")
+                elif suffix == ".wav":
+                    return FileResponse(audio_path, media_type="audio/wav")
+                elif suffix in [".m4a", ".aac", ".ogg", ".flac"]:
+                    return FileResponse(audio_path, media_type="audio/mpeg")
     
     # Fallback: try ref/video folder for testing
     ref_video = PROJECT_ROOT / "ref" / "video" / "testvedio_1.mp4"
@@ -120,7 +150,7 @@ def get_video(course_id: str, session: Session = Depends(get_session)) -> FileRe
         return FileResponse(ref_video, media_type="video/mp4")
     
     from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail="Video not found")
+    raise HTTPException(status_code=404, detail="Video/Audio not found")
 
 
 @router.post("/chat/ask", response_model=ChatResponse)

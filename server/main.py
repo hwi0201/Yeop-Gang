@@ -1,3 +1,4 @@
+# dh: Rate Limiting 미들웨어 추가
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -7,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ai.routers import router as ai_router
 from api.routers import router as api_router
 from core.db import init_db
+from core.dh_rate_limit import RateLimitMiddleware
 
 
 def create_app() -> FastAPI:
@@ -33,6 +35,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # dh: Rate Limiting 미들웨어 추가
+    app.add_middleware(
+        RateLimitMiddleware,
+        max_requests=100,  # 시간당 최대 요청 수
+        window_seconds=3600,  # 1시간
+    )
+
     app.include_router(api_router, prefix="/api")
     app.include_router(ai_router, prefix="/ai")
 
@@ -47,6 +56,8 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     def _startup() -> None:
+        # dh: 새로운 모델들도 초기화 (Student, CourseEnrollment)
+        from core.dh_models import Student, CourseEnrollment
         init_db()
 
     return app

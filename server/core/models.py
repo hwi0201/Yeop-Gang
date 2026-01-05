@@ -30,6 +30,7 @@ class Course(SQLModel, table=True):
     instructor_id: str = Field(foreign_key="instructor.id")
     title: Optional[str] = None
     status: CourseStatus = Field(default=CourseStatus.processing)
+    progress: int = Field(default=0, description="처리 진행도 (0-100)")  # 0-100%
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -60,3 +61,5 @@ class ChatSession(SQLModel, table=True):
 
     course: Course = Relationship(back_populates="sessions")
 
+
+# dh: Student 모델은 server/core/dh_models.py에 정의됨
