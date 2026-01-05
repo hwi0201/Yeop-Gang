@@ -16,8 +16,9 @@ def process_course_assets(
     *,
     course_id: str,
     instructor_id: str,
-    video_path: Optional[Path],
-    pdf_path: Optional[Path],
+    video_path: Optional[Path] = None,
+    audio_path: Optional[Path] = None,
+    pdf_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     백엔드 A: 자동화 파이프라인 오케스트레이션
@@ -48,9 +49,12 @@ def process_course_assets(
         ingested_count = 0
         
         # 1. 비디오/오디오 STT 처리
-        if video_path and video_path.exists():
+        # video_path 또는 audio_path 중 하나를 사용 (둘 다 있으면 video_path 우선)
+        media_path = video_path or audio_path
+        if media_path and media_path.exists():
             try:
-                transcript_result = transcribe_video(str(video_path), settings=settings)
+                print(f"[{course_id}] STT 처리 시작: {media_path.name}")
+                transcript_result = transcribe_video(str(media_path), settings=settings)
                 transcript_text = transcript_result.get("text", "")
                 segments = transcript_result.get("segments", [])
                 
@@ -59,6 +63,7 @@ def process_course_assets(
                     texts.append(transcript_text)
                     
                     # 세그먼트별 메타데이터 포함하여 RAG 인제스트
+                    print(f"[{course_id}] {len(segments)}개 세그먼트 인제스트 시작...")
                     for idx, seg in enumerate(segments):
                         seg_text = seg.get("text", "")
                         if not seg_text:
@@ -67,10 +72,11 @@ def process_course_assets(
                         seg_meta = {
                             "course_id": course_id,
                             "instructor_id": instructor_id,
-                            "source": video_path.name,
+                            "source": media_path.name,
                             "start_time": seg.get("start"),
                             "end_time": seg.get("end"),
                             "segment_index": idx,
+                            "type": "video_segment" if video_path else "audio_segment",
                         }
                         
                         result = pipeline.ingest_texts(
