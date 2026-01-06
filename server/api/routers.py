@@ -36,77 +36,18 @@ def get_pipeline(settings: AISettings = Depends(AISettings)) -> RAGPipeline:
     return RAGPipeline(settings)
 
 
-def _serve_video_with_range(file_path: Path, media_type: str, request: Request = None):
+def _serve_video_file(file_path: Path, media_type: str):
     """
-    HTTP Range 요청을 지원하는 비디오 스트리밍 응답 생성
-    대용량 비디오 파일의 빠른 로딩을 위해 Range 요청을 명시적으로 처리
+    FastAPI FileResponse를 사용하여 비디오 파일 제공
+    FileResponse는 자동으로 HTTP Range 요청을 처리합니다.
     """
-    file_size = file_path.stat().st_size
-    
-    # Range 요청 처리
-    range_header = request.headers.get("range") if request else None
-    
-    if range_header:
-        # Range 헤더 파싱: "bytes=start-end"
-        range_match = range_header.replace("bytes=", "").split("-")
-        start = int(range_match[0]) if range_match[0] else 0
-        end = int(range_match[1]) if range_match[1] and range_match[1] else file_size - 1
-        
-        # 범위 검증
-        if start >= file_size or end >= file_size or start > end:
-            return Response(
-                status_code=416,  # Range Not Satisfiable
-                headers={"Content-Range": f"bytes */{file_size}"}
-            )
-        
-        content_length = end - start + 1
-        
-        def generate_range():
-            with open(file_path, "rb") as f:
-                f.seek(start)
-                remaining = content_length
-                while remaining > 0:
-                    chunk_size = min(8192, remaining)  # 8KB 청크
-                    chunk = f.read(chunk_size)
-                    if not chunk:
-                        break
-                    remaining -= len(chunk)
-                    yield chunk
-        
-        headers = {
-            "Content-Range": f"bytes {start}-{end}/{file_size}",
+    return FileResponse(
+        file_path,
+        media_type=media_type,
+        headers={
             "Accept-Ranges": "bytes",
-            "Content-Length": str(content_length),
-            "Content-Type": media_type,
         }
-        
-        return StreamingResponse(
-            generate_range(),
-            status_code=206,  # Partial Content
-            headers=headers,
-            media_type=media_type,
-        )
-    else:
-        # Range 요청이 없으면 전체 파일 스트리밍 (청크 단위)
-        def generate():
-            with open(file_path, "rb") as f:
-                while True:
-                    chunk = f.read(8192)  # 8KB 청크
-                    if not chunk:
-                        break
-                    yield chunk
-        
-        headers = {
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(file_size),
-            "Content-Type": media_type,
-        }
-        
-        return StreamingResponse(
-            generate(),
-            media_type=media_type,
-            headers=headers,
-        )
+    )
 
 
 @router.get("/health")
@@ -272,7 +213,7 @@ _conversation_history: dict[str, list[dict[str, str]]] = {}
 
 
 @router.get("/video/{course_id}")
-def get_video(course_id: str, request: Request, session: Session = Depends(get_session)):
+def get_video(course_id: str, session: Session = Depends(get_session)):
     """
     Get video/audio file for a course. Returns the first video or audio file found for the course.
     Supports both mp4 (video) and mp3 (audio) files.
@@ -313,9 +254,9 @@ def get_video(course_id: str, request: Request, session: Session = Depends(get_s
                 suffix = video_path.suffix.lower()
                 logger.info(f"Found video file: {video_path} (suffix: {suffix})")
                 if suffix == ".mp4":
-                    return _serve_video_with_range(video_path, "video/mp4", request)
+                    return _serve_video_file(video_path, "video/mp4")
                 elif suffix in [".avi", ".mov", ".mkv", ".webm"]:
-                    return _serve_video_with_range(video_path, "video/mp4", request)
+                    return _serve_video_file(video_path, "video/mp4")
             else:
                 # 디버그 레벨로 변경 (너무 많은 경고 방지)
                 logger.debug(f"Video file not found at path: {video_path}")
@@ -385,13 +326,13 @@ def get_video(course_id: str, request: Request, session: Session = Depends(get_s
                 for video_file in course_dir.glob("*.mp4"):
                     if video_file.exists():
                         logger.info(f"Found video file via filesystem search: {video_file}")
-                        return _serve_video_with_range(video_file, "video/mp4", request)
+                        return _serve_video_file(video_file, "video/mp4")
                 # 다른 비디오 형식 찾기
                 for ext in [".avi", ".mov", ".mkv", ".webm"]:
                     for video_file in course_dir.glob(f"*{ext}"):
                         if video_file.exists():
                             logger.info(f"Found video file via filesystem search: {video_file}")
-                            return _serve_video_with_range(video_file, "video/mp4", request)
+                            return _serve_video_file(video_file, "video/mp4")
                 # mp3 파일 찾기
                 for audio_file in course_dir.glob("*.mp3"):
                     if audio_file.exists():
@@ -422,7 +363,7 @@ def get_video(course_id: str, request: Request, session: Session = Depends(get_s
     ref_video = PROJECT_ROOT / "ref" / "video" / "testvedio_1.mp4"
     if ref_video.exists():
         logger.info(f"Using fallback video file: {ref_video}")
-        return _serve_video_with_range(ref_video, "video/mp4", request)
+        return _serve_video_file(ref_video, "video/mp4")
     
     from fastapi import HTTPException
     raise HTTPException(status_code=404, detail=f"Video/Audio not found for course_id: {course_id}")
