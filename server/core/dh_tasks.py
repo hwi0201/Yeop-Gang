@@ -280,10 +280,12 @@ def _fallback_process_course_assets(
                 else:
                     file_type = "video"  # 기본값
                 
+                # 절대 경로로 변환하여 저장
+                absolute_path = video_path.resolve()
                 vid = Video(
                     course_id=course_id,
                     filename=video_path.name,
-                    storage_path=str(video_path),
+                    storage_path=str(absolute_path),
                     filetype=file_type,
                 )
                 session.add(vid)
@@ -365,11 +367,12 @@ def _fallback_process_course_assets(
                         _update_progress(course_id, 60, "오디오 세그먼트 임베딩 완료")
                         logger.info(f"Stored {len(segment_texts)} audio segments to vector DB")
                 
-                # Audio 레코드 생성
+                # Audio 레코드 생성 (절대 경로로 변환)
+                absolute_audio_path = audio_path.resolve()
                 audio_file = Video(
                     course_id=course_id,
                     filename=audio_path.name,
-                    storage_path=str(audio_path),
+                    storage_path=str(absolute_audio_path),
                     filetype="audio",
                 )
                 session.add(audio_file)
@@ -390,10 +393,12 @@ def _fallback_process_course_assets(
                 pdf_text = f"PDF placeholder for {pdf_path.name}"
                 texts.append(pdf_text)
                 
+                # PDF 레코드 생성 (절대 경로로 변환)
+                absolute_pdf_path = pdf_path.resolve()
                 doc = Video(
                     course_id=course_id,
                     filename=pdf_path.name,
-                    storage_path=str(pdf_path),
+                    storage_path=str(absolute_pdf_path),
                     filetype="pdf",
                 )
                 session.add(doc)

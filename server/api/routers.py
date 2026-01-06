@@ -204,6 +204,13 @@ def get_video(course_id: str, session: Session = Depends(get_session)) -> FileRe
     Supports both mp4 (video) and mp3 (audio) files.
     For testing: can also serve files from ref/video/ folder.
     """
+    import logging
+    from core.config import AppSettings
+    
+    logger = logging.getLogger(__name__)
+    settings = AppSettings()
+    logger.info(f"Requesting video for course_id: {course_id}")
+    
     # Try to get video/audio from database
     course = session.get(Course, course_id)
     if course:
@@ -215,13 +222,37 @@ def get_video(course_id: str, session: Session = Depends(get_session)) -> FileRe
             )
         ).all()
         for vid in videos:
+            # storage_path가 절대 경로인지 상대 경로인지 확인
             video_path = Path(vid.storage_path)
+            if not video_path.is_absolute():
+                # 상대 경로면 uploads_dir 기준으로 절대 경로 변환
+                video_path = settings.uploads_dir / video_path
+            else:
+                video_path = video_path.resolve()
+            
             if video_path.exists():
                 suffix = video_path.suffix.lower()
+                logger.info(f"Found video file: {video_path} (suffix: {suffix})")
                 if suffix == ".mp4":
-                    return FileResponse(video_path, media_type="video/mp4")
+                    return FileResponse(
+                        video_path, 
+                        media_type="video/mp4",
+                        headers={
+                            "Accept-Ranges": "bytes",
+                            "Content-Length": str(video_path.stat().st_size),
+                        }
+                    )
                 elif suffix in [".avi", ".mov", ".mkv", ".webm"]:
-                    return FileResponse(video_path, media_type="video/mp4")  # 기본 비디오 타입
+                    return FileResponse(
+                        video_path, 
+                        media_type="video/mp4",
+                        headers={
+                            "Accept-Ranges": "bytes",
+                            "Content-Length": str(video_path.stat().st_size),
+                        }
+                    )
+            else:
+                logger.warning(f"Video file not found at path: {video_path}")
         
         # audio 타입 파일 확인 (mp3 포함)
         audios = session.exec(
@@ -231,15 +262,103 @@ def get_video(course_id: str, session: Session = Depends(get_session)) -> FileRe
             )
         ).all()
         for audio in audios:
+            # storage_path가 절대 경로인지 상대 경로인지 확인
             audio_path = Path(audio.storage_path)
+            if not audio_path.is_absolute():
+                # 상대 경로면 uploads_dir 기준으로 절대 경로 변환
+                audio_path = settings.uploads_dir / audio_path
+            else:
+                audio_path = audio_path.resolve()
+            
             if audio_path.exists():
                 suffix = audio_path.suffix.lower()
+                logger.info(f"Found audio file: {audio_path} (suffix: {suffix})")
                 if suffix == ".mp3":
-                    return FileResponse(audio_path, media_type="audio/mpeg")
+                    return FileResponse(
+                        audio_path, 
+                        media_type="audio/mpeg",
+                        headers={
+                            "Accept-Ranges": "bytes",
+                            "Content-Length": str(audio_path.stat().st_size),
+                        }
+                    )
                 elif suffix == ".wav":
-                    return FileResponse(audio_path, media_type="audio/wav")
+                    return FileResponse(
+                        audio_path, 
+                        media_type="audio/wav",
+                        headers={
+                            "Accept-Ranges": "bytes",
+                            "Content-Length": str(audio_path.stat().st_size),
+                        }
+                    )
                 elif suffix in [".m4a", ".aac", ".ogg", ".flac"]:
-                    return FileResponse(audio_path, media_type="audio/mpeg")
+                    return FileResponse(
+                        audio_path, 
+                        media_type="audio/mpeg",
+                        headers={
+                            "Accept-Ranges": "bytes",
+                            "Content-Length": str(audio_path.stat().st_size),
+                        }
+                    )
+            else:
+                logger.warning(f"Audio file not found at path: {audio_path}")
+        
+        # DB에 레코드는 있지만 파일이 없는 경우, 파일 시스템에서 직접 찾기
+        # instructor_id/course_id 구조로 찾기
+        if course.instructor_id:
+            course_dir = settings.uploads_dir / course.instructor_id / course_id
+            if course_dir.exists():
+                logger.info(f"Searching for files in: {course_dir}")
+                # mp4 파일 찾기
+                for video_file in course_dir.glob("*.mp4"):
+                    if video_file.exists():
+                        logger.info(f"Found video file via filesystem search: {video_file}")
+                        return FileResponse(
+                            video_file, 
+                            media_type="video/mp4",
+                            headers={
+                                "Accept-Ranges": "bytes",
+                                "Content-Length": str(video_file.stat().st_size),
+                            }
+                        )
+                # 다른 비디오 형식 찾기
+                for ext in [".avi", ".mov", ".mkv", ".webm"]:
+                    for video_file in course_dir.glob(f"*{ext}"):
+                        if video_file.exists():
+                            logger.info(f"Found video file via filesystem search: {video_file}")
+                            return FileResponse(
+                                video_file, 
+                                media_type="video/mp4",
+                                headers={
+                                    "Accept-Ranges": "bytes",
+                                    "Content-Length": str(video_file.stat().st_size),
+                                }
+                            )
+                # mp3 파일 찾기
+                for audio_file in course_dir.glob("*.mp3"):
+                    if audio_file.exists():
+                        logger.info(f"Found audio file via filesystem search: {audio_file}")
+                        return FileResponse(
+                            audio_file, 
+                            media_type="audio/mpeg",
+                            headers={
+                                "Accept-Ranges": "bytes",
+                                "Content-Length": str(audio_file.stat().st_size),
+                            }
+                        )
+                # 다른 오디오 형식 찾기
+                for ext in [".wav", ".m4a", ".aac", ".ogg", ".flac"]:
+                    for audio_file in course_dir.glob(f"*{ext}"):
+                        if audio_file.exists():
+                            logger.info(f"Found audio file via filesystem search: {audio_file}")
+                            return FileResponse(
+                                audio_file, 
+                                media_type="audio/mpeg",
+                                headers={
+                                    "Accept-Ranges": "bytes",
+                                    "Content-Length": str(audio_file.stat().st_size),
+                                }
+                            )
     
     # Fallback: try ref/video folder for testing
     ref_video = PROJECT_ROOT / "ref" / "video" / "testvedio_1.mp4"
@@ -247,7 +366,7 @@ def get_video(course_id: str, session: Session = Depends(get_session)) -> FileRe
         return FileResponse(ref_video, media_type="video/mp4")
     
     from fastapi import HTTPException
-    raise HTTPException(status_code=404, detail="Video/Audio not found")
+    raise HTTPException(status_code=404, detail=f"Video/Audio not found for course_id: {course_id}")
 
 
 @router.post("/chat/ask", response_model=ChatResponse)
