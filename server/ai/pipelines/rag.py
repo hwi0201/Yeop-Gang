@@ -112,6 +112,15 @@ class RAGPipeline:
                 include=["documents", "metadatas", "distances"],
                 where={"course_id": course_id},
             )
+        except ValueError as e:
+            # API 키나 할당량 관련 에러
+            error_msg = str(e)
+            return {
+                "question": question,
+                "documents": [],
+                "metadatas": [],
+                "answer": f"⚠️ {error_msg}",
+            }
         except Exception as exc:
             # If collection dimension mismatch occurs (old collection), recreate and return placeholder
             from chromadb.errors import InvalidDimensionException
@@ -356,7 +365,11 @@ class RAGPipeline:
             
             return persona_instruction
         except Exception as e:
-            print(f"Warning: Failed to analyze persona style: {e}")
+            error_msg = str(e)
+            if "insufficient_quota" in error_msg or "quota" in error_msg.lower():
+                print(f"Warning: OpenAI quota exceeded during persona analysis: {error_msg}")
+            else:
+                print(f"Warning: Failed to analyze persona style: {error_msg}")
             # Fallback to simple prompt
             sample = sample_texts[0][:500] if sample_texts else ""
             return (

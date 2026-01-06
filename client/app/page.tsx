@@ -1,45 +1,79 @@
 import Link from "next/link";
-import ChatPanel from "../components/ChatPanel";
-import VideoPlayer from "../components/VideoPlayer";
+import { BookOpen, Upload, GraduationCap, PlayCircle } from "lucide-react";
 
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-6 py-10">
-      <header className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-slate-400">
-            Yeop-Gang
-          </p>
-          <h1 className="text-2xl font-bold text-white">
-            EBS 인강 AI 보조 챗봇
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="mx-auto max-w-6xl px-6 py-16">
+        {/* 헤더 */}
+        <header className="mb-16 text-center">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-blue-100 px-4 py-1.5 text-sm font-medium text-blue-700">
+            <BookOpen className="h-4 w-4" />
+            <span>옆강</span>
+          </div>
+          <h1 className="mb-4 text-5xl font-bold text-slate-900">
+            MAIN 화면
           </h1>
-        </div>
-        <div className="rounded-full border border-sky-800 bg-sky-900/30 px-4 py-1 text-xs text-sky-200">
-          초기 데모 레이아웃
-        </div>
+          <p className="mx-auto max-w-2xl text-lg text-slate-600">
+            강의 영상을 업로드하고 AI 튜터와 함께 학습하세요.
+          </p>
       </header>
 
-      <div className="flex gap-3 text-sm text-slate-300">
+        {/* 메인 액션 버튼 */}
+        <div className="mb-20 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
         <Link
-          className="rounded-lg bg-sky-600 px-4 py-2 font-semibold text-white"
           href="/instructor/upload"
+            className="group flex items-center gap-3 rounded-xl bg-blue-600 px-8 py-4 text-base font-semibold text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl"
         >
-          강사용 업로드
+            <Upload className="h-5 w-5" />
+            <span>강의 업로드</span>
         </Link>
         <Link
-          className="rounded-lg border border-slate-700 px-4 py-2 text-slate-200"
-          href="/student/play/demo-course"
+          href="/student"
+            className="group flex items-center gap-3 rounded-xl border-2 border-slate-300 bg-white px-8 py-4 text-base font-semibold text-slate-700 transition-all hover:border-blue-500 hover:bg-blue-50"
         >
-          학생용 데모 이동
+            <GraduationCap className="h-5 w-5" />
+            <span>강의 목록 보기</span>
         </Link>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <VideoPlayer />
+        {/* 기능 소개 */}
+        <div className="grid gap-6 md:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+              <PlayCircle className="h-6 w-6" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-slate-900">
+              강의 시청
+            </h3>
+            <p className="text-sm text-slate-600">
+              업로드된 강의 영상을 시청하고, 타임라인을 통해 원하는 구간으로 바로 이동할 수 있습니다.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-green-600">
+              <BookOpen className="h-6 w-6" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-slate-900">
+              AI 튜터 채팅
+            </h3>
+            <p className="text-sm text-slate-600">
+              강의 내용에 대해 실시간으로 질문하고 답변을 받을 수 있습니다. 강사의 말투로 답변합니다.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-purple-100 text-purple-600">
+              <GraduationCap className="h-6 w-6" />
+            </div>
+            <h3 className="mb-2 text-lg font-semibold text-slate-900">
+              학습 도구
+            </h3>
+            <p className="text-sm text-slate-600">
+              자동 생성된 요약노트와 퀴즈를 통해 학습 내용을 효과적으로 복습할 수 있습니다.
+            </p>
         </div>
-        <div className="h-[520px] lg:col-span-1">
-          <ChatPanel courseId="demo-course" />
         </div>
       </div>
     </main>

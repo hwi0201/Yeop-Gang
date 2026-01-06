@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Yeop-Gang",
-  description: "EBS 인강 AI 보조 챗봇",
+  description: "EBS 인강 AI 튜터",
 };
 
 export default function RootLayout({

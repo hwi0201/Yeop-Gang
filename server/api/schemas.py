@@ -41,3 +41,46 @@ class StatusResponse(BaseModel):
     progress: int = 0
     message: Optional[str] = None
 
+
+class SummaryRequest(BaseModel):
+    course_id: str
+
+
+class SummaryResponse(BaseModel):
+    course_id: str
+    summary: str
+    key_points: list[str] = []
+
+
+class QuizRequest(BaseModel):
+    course_id: str
+    num_questions: int = 5
+
+
+class QuizQuestion(BaseModel):
+    id: int
+    question: str
+    options: list[str]
+    correct_answer: int  # 0-based index
+    explanation: Optional[str] = None
+
+
+class QuizResponse(BaseModel):
+    course_id: str
+    questions: list[QuizQuestion]
+    quiz_id: Optional[str] = None
+
+
+class QuizSubmitRequest(BaseModel):
+    course_id: str
+    quiz_id: Optional[str] = None
+    answers: dict[int, int]  # question_id -> selected_option_index
+
+
+class QuizResult(BaseModel):
+    course_id: str
+    score: int
+    total: int
+    percentage: float
+    correct_answers: list[int]
+    wrong_answers: list[int]
