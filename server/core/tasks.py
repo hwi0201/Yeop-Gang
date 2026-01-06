@@ -32,4 +32,3 @@ def enqueue_processing_task(
         audio_path=audio_path,
         pdf_path=pdf_path,
     )
-

@@ -104,18 +104,48 @@ def process_course_assets_wrapper(
     백엔드 B는 이 함수를 통해 백엔드 A의 처리 로직을 호출합니다.
     """
     try:
+        # 진행도 초기화
+        _update_progress(course_id, 0, "처리 시작")
+        
         # 백엔드 A의 processor 모듈 import 시도
         try:
             from ai.pipelines.processor import process_course_assets
             # 백엔드 A의 함수가 있으면 호출
-            process_course_assets(
+            _update_progress(course_id, 10, "백엔드 A 파이프라인 시작")
+            result = process_course_assets(
                 course_id=course_id,
                 instructor_id=instructor_id,
                 video_path=video_path,
                 audio_path=audio_path,
                 pdf_path=pdf_path,
             )
-            logger.info(f"Course {course_id} processed successfully via backend A processor")
+            
+            # 처리 결과 확인
+            if result.get("status") == "completed":
+                ingested_count = result.get("ingested_count", 0)
+                logger.info(f"Course {course_id} processed successfully via backend A processor (ingested: {ingested_count})")
+                _update_progress(course_id, 100, f"처리 완료 (인제스트: {ingested_count}개)")
+                
+                # DB 상태를 completed로 업데이트
+                with Session(engine) as session:
+                    course = session.get(Course, course_id)
+                    if course:
+                        course.status = CourseStatus.completed
+                        course.progress = 100
+                        session.commit()
+            else:
+                # 처리 실패
+                error_msg = result.get("error", "알 수 없는 오류")
+                logger.error(f"Course {course_id} processing failed: {error_msg}")
+                _update_progress(course_id, 0, f"처리 실패: {error_msg}")
+                
+                # DB 상태를 failed로 업데이트
+                with Session(engine) as session:
+                    course = session.get(Course, course_id)
+                    if course:
+                        course.status = CourseStatus.failed
+                        session.commit()
+                        
         except ImportError:
             # 백엔드 A의 processor.py가 아직 없으면 기존 로직 사용 (임시)
             logger.warning(
@@ -130,9 +160,10 @@ def process_course_assets_wrapper(
                 pdf_path=pdf_path,
             )
     except Exception as e:
-        error_msg = str(e)
-        logger.error(f"Error processing course {course_id}: {error_msg}", exc_info=True)
-        # DB에 실패 상태 및 에러 메시지 저장
+        logger.error(f"Error processing course {course_id}: {e}", exc_info=True)
+        _update_progress(course_id, 0, f"오류 발생: {str(e)}")
+        # DB에 실패 상태 저장
+        
         with Session(engine) as session:
             course = session.get(Course, course_id)
             if course:
