@@ -6,8 +6,11 @@ from ai.services.embeddings import embed_texts
 
 try:
     from openai import OpenAI
+    from openai import RateLimitError, APIError
 except Exception:
     OpenAI = None  # type: ignore
+    RateLimitError = None  # type: ignore
+    APIError = None  # type: ignore
 
 
 class RAGPipeline:
@@ -92,7 +95,16 @@ class RAGPipeline:
         """
         try:
             # 질문을 임베딩으로 변환 (ingest_texts와 동일한 방식)
-            query_embeddings = embed_texts([question], self.settings)
+            try:
+                query_embeddings = embed_texts([question], self.settings)
+            except ValueError as e:
+                # API 할당량 초과 등 임베딩 생성 실패 시
+                return {
+                    "question": question,
+                    "documents": [],
+                    "metadatas": [],
+                    "answer": f"⚠️ 임베딩 생성 중 오류가 발생했습니다: {str(e)}",
+                }
             # 페르소나 프롬프트도 포함하기 위해 k+1로 검색
             results = self.collection.query(
                 query_embeddings=query_embeddings,
@@ -233,12 +245,24 @@ class RAGPipeline:
         messages.append({"role": "user", "content": question})
 
         client = OpenAI(api_key=self.settings.openai_api_key)
-        resp = client.chat.completions.create(
-            model=self.settings.llm_model,
-            messages=messages,
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content
+        try:
+            resp = client.chat.completions.create(
+                model=self.settings.llm_model,
+                messages=messages,
+                temperature=0.3,
+            )
+            return resp.choices[0].message.content
+        except RateLimitError as e:
+            error_msg = (
+                "OpenAI API 할당량을 초과했습니다. "
+                "계정의 결제 정보와 사용 한도를 확인해주세요."
+            )
+            print(f"ERROR [LLM]: {error_msg} (에러 코드: {e.status_code if hasattr(e, 'status_code') else '429'})")
+            return f"⚠️ {error_msg}"
+        except APIError as e:
+            error_msg = f"OpenAI API 오류가 발생했습니다: {str(e)}"
+            print(f"ERROR [LLM]: {error_msg}")
+            return f"⚠️ {error_msg}"
 
     def generate_persona_prompt(
         self, *, course_id: str, sample_texts: list[str]
@@ -300,6 +324,22 @@ class RAGPipeline:
                 temperature=0.3,
             )
             style_analysis = resp.choices[0].message.content
+        except RateLimitError as e:
+            print(f"Warning: OpenAI API 할당량 초과로 페르소나 분석 실패: {e}")
+            # Fallback to simple prompt
+            sample = sample_texts[0][:500] if sample_texts else ""
+            return (
+                f"당신은 course_id={course_id} 강사의 말투를 모방한 AI입니다. "
+                f"아래 샘플을 참고하여 답변하세요:\n{sample}"
+            )
+        except APIError as e:
+            print(f"Warning: OpenAI API 오류로 페르소나 분석 실패: {e}")
+            # Fallback to simple prompt
+            sample = sample_texts[0][:500] if sample_texts else ""
+            return (
+                f"당신은 course_id={course_id} 강사의 말투를 모방한 AI입니다. "
+                f"아래 샘플을 참고하여 답변하세요:\n{sample}"
+            )
             
             # Generate persona prompt based on analysis
             persona_instruction = f"""당신은 course_id={course_id} 강사의 말투와 스타일을 정확하게 모방하는 AI 챗봇입니다.

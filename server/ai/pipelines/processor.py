@@ -131,11 +131,13 @@ def process_course_assets(
                     
                     print(f"[{course_id}] 오디오 세그먼트 인제스트 완료")
                 else:
-                    print(f"[{course_id}] 오디오 STT 결과 텍스트가 비어있습니다: {audio_path.name}")
+                    print(f"[{course_id}] ⚠️ 오디오 STT 결과 텍스트가 비어있습니다: {audio_path.name}")
                     
             except Exception as e:
-                error_msg = f"[{course_id}] 오디오 STT 처리 오류 ({audio_path.name}): {str(e)}"
+                error_msg = f"[{course_id}] ❌ 오디오 STT 처리 오류 ({audio_path.name}): {str(e)}"
                 print(error_msg)
+                import traceback
+                traceback.print_exc()
         
         # 2. PDF 멀티모달 처리 (텍스트 + 이미지 설명)
         if pdf_path and pdf_path.exists():
@@ -165,28 +167,23 @@ def process_course_assets(
                         )
                         ingested_count += result.get("ingested", 0)
                     
-                    print(f"PDF 처리 완료: {len(pdf_texts)}페이지, 파일: {pdf_path.name}")
+                    print(f"[{course_id}] PDF 처리 완료: {len(pdf_texts)}페이지, 파일: {pdf_path.name}")
                 else:
-                    print(f"PDF에서 텍스트를 추출하지 못했습니다: {pdf_path.name}")
+                    print(f"[{course_id}] ⚠️ PDF에서 텍스트를 추출하지 못했습니다: {pdf_path.name}")
                     
             except Exception as e:
-                error_msg = f"PDF 처리 오류 ({pdf_path.name}): {str(e)}"
+                error_msg = f"[{course_id}] ❌ PDF 처리 오류 ({pdf_path.name}): {str(e)}"
                 print(error_msg)
-                # 오류가 발생해도 계속 진행
-                texts.append(f"PDF 처리 오류: {error_msg}")
+                import traceback
+                traceback.print_exc()
+                # 오류가 발생해도 계속 진행 (페르소나 생성은 가능)
         
         # 3. 페르소나 추출 및 RAG 인제스트
         if texts:
-            # 페르소나 생성용 전체 텍스트 인제스트
-            result = pipeline.ingest_texts(
-                texts,
-                course_id=course_id,
-                metadata={"course_id": course_id, "instructor_id": instructor_id},
-            )
-            ingested_count += result.get("ingested", 0)
-            
-            # 동적 페르소나 프롬프트 생성
+            # 동적 페르소나 프롬프트 생성 (전체 텍스트는 페르소나 생성에만 사용)
+            # 세그먼트별/페이지별로 이미 인제스트했으므로 전체 텍스트를 다시 인제스트할 필요 없음
             try:
+                print(f"[{course_id}] 페르소나 추출 시작...")
                 persona_prompt = pipeline.generate_persona_prompt(
                     course_id=course_id, sample_texts=texts
                 )
@@ -202,23 +199,28 @@ def process_course_assets(
                     },
                 )
                 ingested_count += result.get("ingested", 0)
-                print(f"페르소나 추출 및 저장 완료: course_id={course_id}")
+                print(f"[{course_id}] 페르소나 추출 및 저장 완료")
                 
             except Exception as e:
-                error_msg = f"페르소나 추출 오류: {str(e)}"
+                error_msg = f"[{course_id}] ❌ 페르소나 추출 오류: {str(e)}"
                 print(error_msg)
-                # 페르소나 추출 실패해도 계속 진행
+                import traceback
+                traceback.print_exc()
+                # 페르소나 추출 실패해도 계속 진행 (이미 세그먼트/페이지는 인제스트됨)
         else:
-            print(f"처리할 텍스트가 없습니다: course_id={course_id}")
+            print(f"[{course_id}] ⚠️ 처리할 텍스트가 없습니다")
         
+        print(f"[{course_id}] ✅ 파이프라인 처리 완료 (인제스트: {ingested_count}개)")
         return {
             "status": "completed",
             "ingested_count": ingested_count,
         }
         
     except Exception as e:
-        error_msg = f"파이프라인 오케스트레이션 오류: {str(e)}"
+        error_msg = f"[{course_id}] ❌ 파이프라인 오케스트레이션 오류: {str(e)}"
         print(error_msg)
+        import traceback
+        traceback.print_exc()
         return {
             "status": "error",
             "ingested_count": ingested_count if 'ingested_count' in locals() else 0,

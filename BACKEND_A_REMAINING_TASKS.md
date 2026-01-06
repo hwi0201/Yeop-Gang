@@ -28,43 +28,18 @@
 
 ---
 
-## ❌ 아직 구현되지 않은 기능
-
-### 1. 파이프라인 오케스트레이션 (`server/ai/pipelines/processor.py` - 새로 생성 필요)
-
-**목표:** STT → PDF 처리 → 페르소나 추출 → RAG 인제스트 전체 흐름 관리
-
-**현재 상태:**
-- ❌ 파일이 아직 없음
-- ⚠️ `server/core/tasks.py`에 `process_course_assets()` 함수가 있지만, 이는 백엔드 B 영역
-- 백엔드 A가 `server/ai/pipelines/processor.py`에 자신만의 버전을 만들어야 함
-
-**구현해야 할 내용:**
-```python
-# server/ai/pipelines/processor.py
-def process_course_assets(
-    *,
-    course_id: str,
-    instructor_id: str,
-    video_path: Optional[Path],
-    pdf_path: Optional[Path],
-) -> None:
-    """
-    백엔드 A: 자동화 파이프라인 오케스트레이션
-    STT → PDF 처리 → 페르소나 추출 → RAG 인제스트
-    """
-    # 1. STT 처리 (video_path가 있으면)
-    # 2. PDF 처리 (pdf_path가 있으면)
-    # 3. 페르소나 추출
-    # 4. RAG 인제스트 (텍스트, 이미지 설명, 페르소나 모두)
-```
-
-**주의사항:**
-- DB 관련 코드 (Course, Video 모델 생성 등)는 백엔드 B의 책임
-- 백엔드 A는 **순수 AI 처리 로직**만 담당
-- DB 작업이 필요하면 백엔드 B의 함수를 호출하거나, 파라미터로 받아야 함
+### 5. 파이프라인 오케스트레이션 (`server/ai/pipelines/processor.py`) ✅ 완료
+- ✅ `process_course_assets()` 함수 구현 완료
+- ✅ STT 처리 호출
+- ✅ PDF 처리 호출 (멀티모달)
+- ✅ 페르소나 추출 및 저장
+- ✅ RAG 인제스트 (텍스트, 이미지 설명, 페르소나 모두)
+- ✅ audio_path 파라미터 지원 추가
+- ✅ 순수 AI 처리 로직만 담당 (DB 작업 제외)
 
 ---
+
+## ❌ 아직 구현되지 않은 기능 (선택사항)
 
 ### 2. 실시간 스트리밍 질의응답 (선택사항)
 
@@ -84,29 +59,35 @@ def process_course_assets(
 
 ## 📝 구현 우선순위
 
-### 🔥 최우선 (즉시 구현 필요)
+### ✅ 핵심 기능 모두 완료!
 
-1. **파이프라인 오케스트레이션** (`server/ai/pipelines/processor.py`)
-   - 이유: 백엔드 B가 이 함수를 호출할 예정
-   - 현재 `server/core/tasks.py`에 있는 로직을 참고하되, DB 작업 제외
-   - STT + PDF 처리 + 페르소나 + RAG 인제스트 통합
+모든 필수 기능이 구현 완료되었습니다:
+- ✅ STT 처리
+- ✅ PDF 멀티모달 처리
+- ✅ 페르소나 추출
+- ✅ RAG 파이프라인
+- ✅ 파이프라인 오케스트레이션
 
 ### ⚠️ 선택사항 (나중에 구현 가능)
 
-2. **스트리밍 질의응답**
+1. **스트리밍 질의응답**
    - 백엔드 B와 협업 필요
    - 현재 기본 질의응답은 이미 작동함
+   - 우선순위: 낮음
 
-3. **검색 최적화**
+2. **검색 최적화**
    - 하이브리드 검색 고도화
    - RAG 파이프라인 개선
+   - 우선순위: 낮음
 
 ---
 
-## 🎯 다음 단계 제안
+## 🎯 현재 상태
 
-1. `server/ai/pipelines/processor.py` 생성
-2. STT, PDF, 페르소나, RAG 인제스트 로직 통합
-3. DB 작업은 제외 (백엔드 B의 책임)
-4. 백엔드 B와 인터페이스 확인
+✅ **백엔드 A의 핵심 기능은 모두 구현 완료되었습니다!**
+
+다음 단계:
+- 백엔드 B와 협업하여 스트리밍 기능 추가 (선택사항)
+- 검색 성능 최적화 (선택사항)
+- 실제 사용 중 발견되는 버그 수정 및 개선
 
