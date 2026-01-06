@@ -245,27 +245,34 @@ npm install zustand  # 또는 redux
 ```
 
 #### 3. 환경 변수 설정
-`client/.env.local` 파일 생성:
+`client/.env.local` 파일 생성 (선택사항):
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
+**참고:** 환경 변수를 설정하지 않으면 기본값 `http://localhost:8000`이 사용됩니다.
+`.env.local.example` 파일을 참고하여 `.env.local` 파일을 생성할 수 있습니다.
+
 #### 4. 주요 작업 파일
 - **강사 업로드 페이지:** `client/app/instructor/upload/page.tsx`
-  - 현재 기본 구조만 있음
-  - 업로드 폼 API 연동 필요
-  - 진행률 표시 컴포넌트 연결 필요
+  - ✅ 업로드 폼 API 연동 완료
+  - ✅ 진행률 표시 컴포넌트 연결 완료
+  - ✅ 에러 핸들링 및 재시도 기능 완료
 
 - **학생 플레이 페이지:** `client/app/student/play/[course_id]/page.tsx`
-  - 비디오 플레이어 + 채팅 패널 레이아웃 완료
-  - API 연동 필요 (채팅, 비디오 URL)
-  - 타임라인 클릭 시 비디오 이동 기능 필요
+  - ✅ 토글 방식 레이아웃 (강의 시청 / 요약노트 / 퀴즈)
+  - ✅ 비디오 플레이어 + 채팅 패널 레이아웃 완료
+  - ✅ API 연동 완료 (채팅, 비디오 URL)
+  - ✅ 타임라인 클릭 시 비디오 이동 기능 완료
 
 - **컴포넌트:**
-  - `client/components/UploadForm.tsx` - 업로드 폼 (API 연동 필요)
-  - `client/components/ChatPanel.tsx` - 채팅 패널 (API 연동 필요)
-  - `client/components/VideoPlayer.tsx` - 비디오 플레이어 (타임라인 연동 필요)
-  - `client/components/StatusBadge.tsx` - 상태 표시 (완료)
+  - `client/components/UploadForm.tsx` - ✅ 업로드 폼 API 연동 완료, 진행률 폴링, 에러 핸들링
+  - `client/components/ChatPanel.tsx` - ✅ 채팅 패널 API 연동 완료, 타임스탬프 클릭, 자동 스크롤, 에러 핸들링
+  - `client/components/VideoPlayer.tsx` - ✅ 비디오 플레이어 타임라인 연동 완료, 외부 제어 가능
+  - `client/components/SummaryNote.tsx` - ✅ 강의 요약노트 생성, 핵심 요약 및 주요 포인트 표시
+  - `client/components/Quiz.tsx` - ✅ 퀴즈 5문제 자동 생성, 객관식 답변 선택, 자동 채점 및 점수 표시
+  - `client/components/ProgressBar.tsx` - ✅ 진행률 표시 (로딩 애니메이션 포함)
+  - `client/components/StatusBadge.tsx` - ✅ 상태 표시 (완료)
 
 #### 5. 테스트 방법
 
@@ -284,6 +291,8 @@ npm run dev
 2. 업로드 페이지에서 실제 파일 업로드 테스트
 3. 네트워크 탭에서 API 호출 확인
 4. 채팅에서 메시지 전송 테스트
+5. 요약노트 탭에서 자동 요약 생성 확인
+6. 퀴즈 탭에서 퀴즈 생성 및 채점 기능 확인
 
 #### 6. 작업 우선순위 제안
 1. ✅ **업로드 폼 API 연동** - `/api/upload` 호출 및 파일 업로드
@@ -291,7 +300,9 @@ npm run dev
 3. ✅ **상태 폴링** - 업로드 진행률 실시간 표시
 4. ✅ **비디오 플레이어 연동** - 실제 비디오 URL 로드
 5. ✅ **타임라인 클릭** - 답변 내 타임스탬프 클릭 시 비디오 이동
-6. ⏭️ **동적 테마** - 강사별 UI 커스터마이징 (Phase 2)
+6. ✅ **요약노트 기능** - 강의 요약 자동 생성 및 표시
+7. ✅ **퀴즈 기능** - 5문제 퀴즈 생성, 답변 선택, 자동 채점 및 점수 표시
+8. ⏭️ **동적 테마** - 강사별 UI 커스터마이징 (Phase 2)
 
 ---
 

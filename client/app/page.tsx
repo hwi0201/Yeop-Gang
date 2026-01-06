@@ -4,33 +4,33 @@ import VideoPlayer from "../components/VideoPlayer";
 
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-6 py-10">
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-4 px-6 py-10 bg-white">
       <header className="flex items-center justify-between">
         <div>
-          <p className="text-xs uppercase tracking-widest text-slate-400">
+          <p className="text-xs uppercase tracking-widest text-slate-500">
             Yeop-Gang
           </p>
-          <h1 className="text-2xl font-bold text-white">
-            EBS 인강 AI 보조 챗봇
+          <h1 className="text-2xl font-bold text-slate-900">
+            EBS 인강 AI 튜터
           </h1>
         </div>
-        <div className="rounded-full border border-sky-800 bg-sky-900/30 px-4 py-1 text-xs text-sky-200">
+        <div className="rounded-full border border-blue-200 bg-blue-50 px-4 py-1 text-xs text-blue-700">
           초기 데모 레이아웃
         </div>
       </header>
 
-      <div className="flex gap-3 text-sm text-slate-300">
+      <div className="flex gap-3 text-sm">
         <Link
-          className="rounded-lg bg-sky-600 px-4 py-2 font-semibold text-white"
+          className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 transition-colors"
           href="/instructor/upload"
         >
           강사용 업로드
         </Link>
         <Link
-          className="rounded-lg border border-slate-700 px-4 py-2 text-slate-200"
-          href="/student/play/demo-course"
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50 transition-colors"
+          href="/student"
         >
-          학생용 데모 이동
+          학생용 강의 목록
         </Link>
       </div>
 

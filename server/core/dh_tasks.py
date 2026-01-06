@@ -130,13 +130,17 @@ def process_course_assets_wrapper(
                 pdf_path=pdf_path,
             )
     except Exception as e:
-        logger.error(f"Error processing course {course_id}: {e}")
-        # DB에 실패 상태 저장
+        error_msg = str(e)
+        logger.error(f"Error processing course {course_id}: {error_msg}", exc_info=True)
+        # DB에 실패 상태 및 에러 메시지 저장
         with Session(engine) as session:
             course = session.get(Course, course_id)
             if course:
                 course.status = CourseStatus.failed
+                # 에러 메시지를 progress 필드나 다른 방법으로 저장할 수 있지만,
+                # 일단 로그에 남기고 상태만 저장
                 session.commit()
+                logger.error(f"Course {course_id} marked as failed. Error: {error_msg}")
 
 
 def _update_progress(course_id: str, progress: int, message: Optional[str] = None) -> None:
@@ -199,12 +203,27 @@ def _fallback_process_course_assets(
         # 비디오 처리 (STT)
         if video_path:
             try:
+                if not video_path.exists():
+                    raise FileNotFoundError(f"비디오 파일을 찾을 수 없습니다: {video_path}")
+                
                 logger.info(f"Transcribing video: {video_path}")
                 _update_progress(course_id, 10, "음성 인식(STT) 시작")
+                
+                # OPENAI_API_KEY 확인
+                if not settings.openai_api_key:
+                    raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가하세요.")
+                
                 transcript_result = transcribe_video(str(video_path), settings=settings)
                 _update_progress(course_id, 40, "음성 인식(STT) 완료")
                 transcript_text = transcript_result.get("text", "")
                 segments = transcript_result.get("segments", [])
+                
+                # STT placeholder 체크
+                if "placeholder" in transcript_text.lower() or not transcript_text.strip():
+                    raise ValueError(
+                        "STT 처리가 실패했습니다. OPENAI_API_KEY가 설정되어 있는지 확인하세요. "
+                        "또는 파일 형식이 지원되지 않을 수 있습니다."
+                    )
                 
                 if transcript_text:
                     # 전체 텍스트 저장
@@ -271,11 +290,24 @@ def _fallback_process_course_assets(
                 session.commit()
                 logger.info(f"Video record created: {video_path.name}")
                 
-            except Exception as e:
-                logger.error(f"Video processing error: {e}", exc_info=True)
+            except FileNotFoundError as e:
+                error_msg = f"파일을 찾을 수 없습니다: {e}"
+                logger.error(f"Video processing error: {error_msg}", exc_info=True)
                 course.status = CourseStatus.failed
                 session.commit()
-                return
+                raise Exception(error_msg)
+            except ValueError as e:
+                error_msg = str(e)
+                logger.error(f"Video processing error: {error_msg}", exc_info=True)
+                course.status = CourseStatus.failed
+                session.commit()
+                raise Exception(error_msg)
+            except Exception as e:
+                error_msg = f"비디오 처리 중 오류 발생: {str(e)}"
+                logger.error(f"Video processing error: {error_msg}", exc_info=True)
+                course.status = CourseStatus.failed
+                session.commit()
+                raise Exception(error_msg)
         
         # 오디오 처리 (STT)
         if audio_path:
@@ -380,6 +412,9 @@ def _fallback_process_course_assets(
                 logger.info("Ingesting full texts to vector DB")
                 full_text = "\n\n".join(texts)
                 
+                if not full_text or len(full_text.strip()) == 0:
+                    raise ValueError("전사된 텍스트가 없습니다. STT 처리가 실패했을 수 있습니다.")
+                
                 # 텍스트를 토큰 길이 기준으로 청크로 분할
                 _update_progress(course_id, 70, "전체 텍스트 임베딩 준비 중")
                 text_chunks = _split_text_into_chunks(full_text, settings.embedding_model, max_tokens=7000)
@@ -443,11 +478,18 @@ def _fallback_process_course_assets(
                 )
                 _update_progress(course_id, 95, "페르소나 프롬프트 생성 완료")
                 logger.info("Persona prompt generated and stored")
-            except Exception as e:
-                logger.error(f"Vector DB ingestion error: {e}", exc_info=True)
+            except ValueError as e:
+                error_msg = str(e)
+                logger.error(f"Vector DB ingestion error: {error_msg}", exc_info=True)
                 course.status = CourseStatus.failed
                 session.commit()
-                return
+                raise Exception(error_msg)
+            except Exception as e:
+                error_msg = f"벡터 DB 저장 중 오류 발생: {str(e)}"
+                logger.error(f"Vector DB ingestion error: {error_msg}", exc_info=True)
+                course.status = CourseStatus.failed
+                session.commit()
+                raise Exception(error_msg)
         
         # 처리 완료
         course = session.get(Course, course_id)

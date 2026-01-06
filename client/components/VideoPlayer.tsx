@@ -1,16 +1,30 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useImperativeHandle, forwardRef } from "react";
 
 type Props = {
   src?: string;
 };
 
-export default function VideoPlayer({ src }: Props) {
+export type VideoPlayerRef = {
+  seekTo: (time: number) => void;
+};
+
+const VideoPlayer = forwardRef<VideoPlayerRef, Props>(({ src }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
+
+  // 외부에서 호출 가능한 함수 노출
+  useImperativeHandle(ref, () => ({
+    seekTo: (time: number) => {
+      if (videoRef.current) {
+        videoRef.current.currentTime = time;
+        setCurrentTime(time);
+      }
+    },
+  }));
 
   const handleTimeUpdate = () => {
     if (videoRef.current && !isDragging) {
@@ -47,19 +61,19 @@ export default function VideoPlayer({ src }: Props) {
   };
 
   return (
-    <div className="aspect-video w-full overflow-hidden rounded-xl border border-slate-800 bg-black/40">
+    <div className="aspect-video w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <video
         ref={videoRef}
         className="h-full w-full bg-black"
         controls
-        src={src ?? "http://localhost:8000/api/video/default"}
+        src={src ?? `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/video/default`}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
       />
       {/* 커스텀 타임라인 컨트롤 */}
-      <div className="relative w-full bg-slate-900/80 px-4 py-3">
+      <div className="relative w-full bg-slate-50 border-t border-slate-200 px-4 py-3">
         <div className="flex items-center gap-3">
-          <span className="text-xs text-slate-400 min-w-[40px]">
+          <span className="text-xs text-slate-600 min-w-[40px]">
             {formatTime(currentTime)}
           </span>
           <input
@@ -73,21 +87,25 @@ export default function VideoPlayer({ src }: Props) {
             onMouseUp={handleMouseUp}
             onTouchStart={handleMouseDown}
             onTouchEnd={handleMouseUp}
-            className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+            className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
             style={{
-              background: `linear-gradient(to right, rgb(14 165 233) 0%, rgb(14 165 233) ${
+              background: `linear-gradient(to right, rgb(37 99 235) 0%, rgb(37 99 235) ${
                 duration ? (currentTime / duration) * 100 : 0
-              }%, rgb(51 65 85) ${
+              }%, rgb(226 232 240) ${
                 duration ? (currentTime / duration) * 100 : 0
-              }%, rgb(51 65 85) 100%)`,
+              }%, rgb(226 232 240) 100%)`,
             }}
           />
-          <span className="text-xs text-slate-400 min-w-[40px]">
+          <span className="text-xs text-slate-600 min-w-[40px]">
             {formatTime(duration)}
           </span>
         </div>
       </div>
     </div>
   );
-}
+});
+
+VideoPlayer.displayName = "VideoPlayer";
+
+export default VideoPlayer;
 

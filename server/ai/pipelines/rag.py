@@ -77,6 +77,15 @@ class RAGPipeline:
                 include=["documents", "metadatas", "distances"],
                 where={"course_id": course_id},
             )
+        except ValueError as e:
+            # API 키나 할당량 관련 에러
+            error_msg = str(e)
+            return {
+                "question": question,
+                "documents": [],
+                "metadatas": [],
+                "answer": f"⚠️ {error_msg}",
+            }
         except Exception as exc:
             # If collection dimension mismatch occurs (old collection), recreate and return placeholder
             from chromadb.errors import InvalidDimensionException
@@ -190,12 +199,21 @@ class RAGPipeline:
         messages.append({"role": "user", "content": question})
 
         client = OpenAI(api_key=self.settings.openai_api_key)
-        resp = client.chat.completions.create(
-            model=self.settings.llm_model,
-            messages=messages,
-            temperature=0.3,
-        )
-        return resp.choices[0].message.content
+        try:
+            resp = client.chat.completions.create(
+                model=self.settings.llm_model,
+                messages=messages,
+                temperature=0.3,
+            )
+            return resp.choices[0].message.content
+        except Exception as e:
+            error_msg = str(e)
+            if "insufficient_quota" in error_msg or "quota" in error_msg.lower():
+                return "⚠️ OpenAI API 할당량이 초과되었습니다. OpenAI 계정의 크레딧을 확인하거나 결제 정보를 업데이트하세요."
+            elif "rate_limit" in error_msg.lower() or "429" in error_msg:
+                return "⚠️ OpenAI API Rate Limit 초과: 잠시 후 다시 시도하세요."
+            else:
+                return f"⚠️ LLM 응답 생성 중 오류 발생: {error_msg}"
 
     def generate_persona_prompt(
         self, *, course_id: str, sample_texts: list[str]
@@ -273,7 +291,11 @@ class RAGPipeline:
             
             return persona_instruction
         except Exception as e:
-            print(f"Warning: Failed to analyze persona style: {e}")
+            error_msg = str(e)
+            if "insufficient_quota" in error_msg or "quota" in error_msg.lower():
+                print(f"Warning: OpenAI quota exceeded during persona analysis: {error_msg}")
+            else:
+                print(f"Warning: Failed to analyze persona style: {error_msg}")
             # Fallback to simple prompt
             sample = sample_texts[0][:500] if sample_texts else ""
             return (
