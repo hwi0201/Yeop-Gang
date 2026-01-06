@@ -156,19 +156,50 @@ class RAGPipeline:
         docs: List[str] = docs_all[0] if docs_all else []
         metas: List[Dict[str, Any]] = metas_all[0] if metas_all else []
         
-        # 디버깅: 페르소나 검색 확인
-        persona_found = any(meta.get("type") == "persona" for meta in metas)
-        if persona_found:
-            print(f"[RAG DEBUG] ✅ 페르소나가 검색되었습니다 (course_id={course_id})")
-        else:
-            print(f"[RAG DEBUG] ⚠️ 페르소나가 검색되지 않았습니다 (course_id={course_id})")
+        # 페르소나를 명시적으로 별도 검색 (질문과 관계없이 항상 가져오기)
+        persona_doc = None
+        try:
+            # 방법 1: ID로 직접 가져오기 시도
+            try:
+                persona_results = self.collection.get(
+                    ids=[f"{course_id}-persona"],
+                    include=["documents", "metadatas"],
+                )
+                if persona_results.get("documents") and len(persona_results["documents"]) > 0:
+                    persona_doc = persona_results["documents"][0]
+                    print(f"[RAG DEBUG] ✅ 페르소나를 ID로 검색했습니다 (course_id={course_id})")
+            except Exception:
+                # 방법 2: where 필터로 검색 (get이 실패하면 query 사용)
+                persona_query = self.collection.query(
+                    query_texts=["persona"],  # 페르소나 검색용 더미 텍스트
+                    n_results=1,
+                    include=["documents", "metadatas"],
+                    where={"course_id": course_id, "type": "persona"},
+                )
+                if persona_query.get("documents") and len(persona_query["documents"]) > 0:
+                    persona_doc = persona_query["documents"][0][0]  # query는 2차원 배열 반환
+                    print(f"[RAG DEBUG] ✅ 페르소나를 where 필터로 검색했습니다 (course_id={course_id})")
+                else:
+                    print(f"[RAG DEBUG] ⚠️ 페르소나가 벡터 DB에 없습니다 (course_id={course_id})")
+        except Exception as e:
+            print(f"[RAG DEBUG] ⚠️ 페르소나 검색 중 오류: {e}")
+        
+        # 검색 결과에서 페르소나 제거 (중복 방지)
+        filtered_docs = []
+        filtered_metas = []
+        for i, doc in enumerate(docs):
+            meta = metas[i] if i < len(metas) else {}
+            if meta.get("type") != "persona":
+                filtered_docs.append(doc)
+                filtered_metas.append(meta)
         
         answer = self._llm_answer(
             question, 
-            docs, 
-            metas, 
+            filtered_docs, 
+            filtered_metas, 
             course_id,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            persona_doc=persona_doc  # 명시적으로 페르소나 전달
         )
         return {
             "question": question,
@@ -183,7 +214,8 @@ class RAGPipeline:
         docs: List[str], 
         metas: List[Dict[str, Any]], 
         course_id: str,
-        conversation_history: Optional[List[Dict[str, str]]] = None
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        persona_doc: Optional[str] = None
     ) -> str:
         """
         LLM synthesis with persona prompt and conversation history.
@@ -193,13 +225,8 @@ class RAGPipeline:
             return "LLM placeholder: OPENAI_API_KEY가 없어서 기본 답변을 반환합니다."
 
         context_parts = []
-        persona_doc = None
         for i, doc in enumerate(docs):
             meta = metas[i] if i < len(metas) else {}
-            # 페르소나 프롬프트는 컨텍스트에서 제외
-            if meta.get("type") == "persona":
-                persona_doc = doc
-                continue
             src = meta.get("source") or meta.get("filename") or ""
             ts = meta.get("start_time")
             ctx = f"[{src} @ {ts}s] {doc}" if ts is not None else doc
@@ -209,10 +236,10 @@ class RAGPipeline:
         # 저장된 페르소나 프롬프트 사용 (있으면), 없으면 검색된 문서로 생성
         if persona_doc:
             persona = persona_doc
-            print(f"[RAG DEBUG] ✅ 저장된 페르소나 프롬프트 사용")
+            print(f"[RAG DEBUG] ✅ 저장된 페르소나 프롬프트 사용 (course_id={course_id})")
         else:
             # 페르소나 프롬프트를 찾지 못한 경우, 검색된 문서로 생성 (fallback)
-            print(f"[RAG DEBUG] ⚠️ 저장된 페르소나를 찾지 못해 검색된 문서로 생성 (fallback)")
+            print(f"[RAG DEBUG] ⚠️ 저장된 페르소나를 찾지 못해 검색된 문서로 생성 (fallback, course_id={course_id})")
             persona = self.generate_persona_prompt(course_id=course_id, sample_texts=docs)
         
         # 오디오 지식 우선, GPT 지식 보조 프롬프트

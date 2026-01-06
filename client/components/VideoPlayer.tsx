@@ -147,7 +147,8 @@ const VideoPlayer = forwardRef<VideoPlayerRef, Props>(({ src }, ref) => {
         onLoadedMetadata={handleLoadedMetadata}
         onError={handleError}
         onLoadStart={handleLoadStart}
-        preload="auto"
+        preload="metadata"
+        playsInline
       />
       {/* 커스텀 타임라인 컨트롤 */}
       <div className="relative w-full bg-slate-50 border-t border-slate-200 px-4 py-3">
