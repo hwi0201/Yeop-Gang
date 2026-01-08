@@ -24,18 +24,21 @@ def save_course_assets(
     video: Optional[UploadFile] = None,
     audio: Optional[UploadFile] = None,
     pdf: Optional[UploadFile] = None,
+    smi: Optional[UploadFile] = None,
     settings: Optional[AppSettings] = None,
 ) -> dict[str, Optional[Path]]:
     settings = settings or AppSettings()
     course_dir = settings.uploads_dir / instructor_id / course_id
     ensure_dir(course_dir)
 
-    paths: dict[str, Optional[Path]] = {"video": None, "audio": None, "pdf": None}
+    paths: dict[str, Optional[Path]] = {"video": None, "audio": None, "pdf": None, "smi": None}
     if video:
         paths["video"] = save_upload_file(video, course_dir)
     if audio:
         paths["audio"] = save_upload_file(audio, course_dir)
     if pdf:
         paths["pdf"] = save_upload_file(pdf, course_dir)
+    if smi:
+        paths["smi"] = save_upload_file(smi, course_dir)
     return paths
 

@@ -5,13 +5,14 @@ import { AlertCircle, Loader2 } from "lucide-react";
 
 type Props = {
   src?: string;
+  onTimeUpdate?: (currentTime: number) => void;
 };
 
 export type VideoPlayerRef = {
   seekTo: (time: number) => void;
 };
 
-const VideoPlayer = forwardRef<VideoPlayerRef, Props>(({ src }, ref) => {
+const VideoPlayer = forwardRef<VideoPlayerRef, Props>(({ src, onTimeUpdate }, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -31,7 +32,12 @@ const VideoPlayer = forwardRef<VideoPlayerRef, Props>(({ src }, ref) => {
 
   const handleTimeUpdate = () => {
     if (videoRef.current && !isDragging) {
-      setCurrentTime(videoRef.current.currentTime);
+      const time = videoRef.current.currentTime;
+      setCurrentTime(time);
+      // 부모 컴포넌트에 현재 시간 전달
+      if (onTimeUpdate) {
+        onTimeUpdate(time);
+      }
     }
   };
 

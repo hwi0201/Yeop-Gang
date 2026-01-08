@@ -7,14 +7,16 @@ import { API_BASE_URL, apiPost, handleApiError } from "../lib/api";
 
 type Props = {
   courseId: string;
+  courseTitle?: string;  // 강의명 (선택사항)
   onTimestampClick?: (timeInSeconds: number) => void;
+  currentTime?: number;  // 현재 비디오 재생 시간 (초)
 };
 
-export default function ChatPanel({ courseId, onTimestampClick }: Props) {
+export default function ChatPanel({ courseId, courseTitle, onTimestampClick, currentTime }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      content: `코스 ${courseId} 채팅을 시작합니다. 질문을 입력하세요.`,
+      content: `안녕하세요! 강의에 대해 궁금한 점이 있으시면 언제든지 질문해 주세요.`,
     },
   ]);
   const [input, setInput] = useState("");
@@ -46,6 +48,7 @@ export default function ChatPanel({ courseId, onTimestampClick }: Props) {
           course_id: courseId,
           question: trimmed,
           conversation_id: conversationId,
+          current_time: currentTime || 0,  // 현재 시청 시간 전달
         }
       );
 
@@ -129,9 +132,15 @@ export default function ChatPanel({ courseId, onTimestampClick }: Props) {
     }
   };
 
-  // 메시지가 추가될 때 자동 스크롤
+  // 메시지가 추가될 때 자동 스크롤 (컨테이너 내부만)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesContainerRef.current && messagesEndRef.current) {
+      // 컨테이너 내부만 스크롤 (페이지 전체 스크롤 방지)
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
   }, [messages]);
 
   const transcript = useMemo(
@@ -142,26 +151,38 @@ export default function ChatPanel({ courseId, onTimestampClick }: Props) {
   return (
     <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900">
-        실시간 채팅 · {courseId}
+        실시간 채팅
       </div>
       <div
         ref={messagesContainerRef}
-        className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm"
+        className="flex-1 space-y-2 overflow-y-auto px-3 py-3 bg-slate-100"
       >
         {transcript.map((msg) => (
-          <div key={msg.id} className="space-y-1">
-            <div className="text-xs uppercase tracking-wide text-slate-500">
-              {msg.role === "assistant" ? "옆강 봇" : "나"}
-            </div>
+          <div
+            key={msg.id}
+            className={`flex items-end gap-2 ${
+              msg.role === "user" ? "flex-row-reverse" : ""
+            }`}
+          >
+            {/* 프로필 이미지 (봇만) */}
+            {msg.role === "assistant" && (
+              <img
+                src="https://i.ibb.co/27yY0pLS/default-profile.png"
+                alt="옆강 봇"
+                className="h-7 w-7 rounded-full object-cover flex-shrink-0"
+              />
+            )}
+            
+            {/* 말풍선 */}
             <div
-              className={`rounded-lg border px-3 py-2 ${
+              className={`rounded-2xl px-3 py-2 max-w-[75%] ${
                 msg.role === "assistant"
-                  ? "border-blue-200 bg-blue-50"
-                  : "border-slate-200 bg-slate-50"
+                  ? "bg-white rounded-bl-sm"
+                  : "bg-blue-500 text-white rounded-br-sm"
               }`}
             >
               {msg.role === "assistant" ? (
-                <div className="whitespace-pre-wrap">
+                <div className="text-sm">
                   {parseAndRenderContent(msg.content).map((part, idx) => {
                     if (typeof part === "string") {
                       return <span key={idx}>{part}</span>;
@@ -174,7 +195,7 @@ export default function ChatPanel({ courseId, onTimestampClick }: Props) {
                         <button
                           key={idx}
                           onClick={() => handleTimestampClick(part.time)}
-                          className="mx-1 inline-flex items-center rounded-md bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors underline"
+                          className="mx-1 inline-flex items-center rounded-md bg-blue-500 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-600 transition-colors underline"
                           title={`${timeText}로 이동`}
                         >
                           {timeText}
@@ -184,7 +205,9 @@ export default function ChatPanel({ courseId, onTimestampClick }: Props) {
                   })}
                 </div>
               ) : (
-                msg.content
+                <div className="text-sm text-white">
+                  {msg.content}
+                </div>
               )}
             </div>
           </div>
@@ -192,13 +215,27 @@ export default function ChatPanel({ courseId, onTimestampClick }: Props) {
         
         {/* 로딩 인디케이터 */}
         {isLoading && (
-          <div className="flex items-center gap-2 text-slate-500">
-            <div className="flex gap-1">
-              <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.3s]"></div>
-              <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.15s]"></div>
-              <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500"></div>
+          <div className="flex items-start gap-2">
+            <div className="flex-shrink-0">
+              <img
+                src="https://i.ibb.co/27yY0pLS/default-profile.png"
+                alt="옆강 봇"
+                className="h-8 w-8 rounded-full object-cover border border-slate-200"
+              />
             </div>
-            <span className="text-xs">답변 생성 중...</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 px-1">옆강 봇</span>
+              <div className="bg-white border border-slate-200 rounded-2xl px-4 py-2.5 shadow-sm">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <div className="flex gap-1">
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.3s]"></div>
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500 [animation-delay:-0.15s]"></div>
+                    <div className="h-2 w-2 animate-bounce rounded-full bg-blue-500"></div>
+                  </div>
+                  <span className="text-xs">답변 생성 중...</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
         
@@ -239,7 +276,7 @@ export default function ChatPanel({ courseId, onTimestampClick }: Props) {
           />
           <button
             className="rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            onClick={handleSend}
+            onClick={() => handleSend()}
             disabled={isLoading || !input.trim()}
           >
             {isLoading ? "전송 중..." : "전송"}

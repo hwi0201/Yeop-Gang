@@ -153,8 +153,33 @@ class RAGPipeline:
             raise
         docs_all = results.get("documents", []) or [[]]
         metas_all = results.get("metadatas", []) or [[]]
+        distances_all = results.get("distances", []) or [[]]
         docs: List[str] = docs_all[0] if docs_all else []
         metas: List[Dict[str, Any]] = metas_all[0] if metas_all else []
+        distances: List[float] = distances_all[0] if distances_all else []
+        
+        # 디버깅: 검색 결과 로그
+        print(f"[RAG DEBUG] Query: '{question[:50]}...' (course_id={course_id})")
+        print(f"[RAG DEBUG] Found {len(docs)} documents")
+        if docs:
+            for i, (doc, meta, dist) in enumerate(zip(docs[:3], metas[:3], distances[:3])):
+                source = meta.get("source", "unknown")
+                start_time = meta.get("start_time")
+                print(f"[RAG DEBUG] Doc {i+1}: {doc[:100]}... (source={source}, time={start_time}s, distance={dist:.4f})")
+        else:
+            print(f"[RAG DEBUG] ⚠️ No documents found for course_id={course_id}")
+            # 벡터 DB에 데이터가 있는지 확인
+            try:
+                all_docs = self.collection.get(
+                    where={"course_id": course_id},
+                    limit=1
+                )
+                if not all_docs.get("ids") or len(all_docs["ids"]) == 0:
+                    print(f"[RAG DEBUG] ❌ No documents in vector DB for course_id={course_id}. Course may not be processed yet.")
+                else:
+                    print(f"[RAG DEBUG] ✅ Vector DB has documents for course_id={course_id}, but search returned nothing. This may indicate an embedding mismatch.")
+            except Exception as e:
+                print(f"[RAG DEBUG] ⚠️ Could not check vector DB: {e}")
         
         # 페르소나를 명시적으로 별도 검색 (질문과 관계없이 항상 가져오기)
         persona_doc = None
@@ -250,13 +275,26 @@ class RAGPipeline:
                 "강의 컨텍스트에 명확한 답이 있으면 그대로 사용하세요. "
                 "강의 컨텍스트에 없는 내용이 필요할 때만 일반적인 지식으로 보완하세요.\n\n"
                 "강의 컨텍스트:\n"
-                f"{context}"
+                f"{context}\n\n"
+                "위 강의 컨텍스트를 바탕으로 질문에 답변하세요. "
+                "강의 내용을 직접 인용하거나 요약하여 답변하세요."
             )
         else:
             knowledge_instruction = (
-                "강의 컨텍스트를 찾지 못했습니다. "
-                "일반적인 지식으로 답변하되, 강의 범위와 관련된 내용임을 명시하세요."
+                "⚠️ 경고: 강의 컨텍스트를 찾지 못했습니다. "
+                "이는 강의가 아직 처리되지 않았거나, 벡터 DB에 데이터가 없을 수 있습니다. "
+                "일반적인 지식으로 답변하되, 강의 범위와 관련된 내용임을 명시하세요. "
+                "강의 내용을 확인할 수 없으므로 정확한 답변을 제공하기 어렵습니다."
             )
+            print(f"[RAG DEBUG] ⚠️ No context found for course_id={course_id}, question: {question[:50]}")
+            # 컨텍스트가 없으면 명시적으로 표시 (상위 레벨에서 transcript 파일 사용하도록)
+            answer = knowledge_instruction
+            return {
+                "question": question,
+                "documents": [],
+                "metadatas": [],
+                "answer": answer,
+            }
         
         sys_prompt = (
             f"{persona}\n\n"

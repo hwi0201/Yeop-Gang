@@ -10,10 +10,10 @@ from typing import Optional, List
 from datetime import datetime
 
 from fastapi import BackgroundTasks
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from core.db import engine
-from core.models import Course, CourseStatus
+from core.models import Course, CourseStatus, Video
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +76,7 @@ def enqueue_processing_task(
     video_path: Optional[Path] = None,
     audio_path: Optional[Path] = None,
     pdf_path: Optional[Path] = None,
+    smi_path: Optional[Path] = None,
 ) -> None:
     """
     백그라운드 처리 작업 등록
@@ -88,6 +89,7 @@ def enqueue_processing_task(
         video_path=video_path,
         audio_path=audio_path,
         pdf_path=pdf_path,
+        smi_path=smi_path,
     )
 
 
@@ -98,12 +100,27 @@ def process_course_assets_wrapper(
     video_path: Optional[Path] = None,
     audio_path: Optional[Path] = None,
     pdf_path: Optional[Path] = None,
+    smi_path: Optional[Path] = None,
 ) -> None:
     """
     백엔드 A의 processor.process_course_assets()를 호출하는 래퍼 함수
     백엔드 B는 이 함수를 통해 백엔드 A의 처리 로직을 호출합니다.
     """
     try:
+        # 경로를 절대 경로로 변환
+        if video_path:
+            video_path = Path(video_path).resolve()
+            logger.info(f"📁 Video path resolved: {video_path} (exists: {video_path.exists()})")
+        if audio_path:
+            audio_path = Path(audio_path).resolve()
+            logger.info(f"📁 Audio path resolved: {audio_path} (exists: {audio_path.exists()})")
+        if pdf_path:
+            pdf_path = Path(pdf_path).resolve()
+            logger.info(f"📁 PDF path resolved: {pdf_path} (exists: {pdf_path.exists()})")
+        if smi_path:
+            smi_path = Path(smi_path).resolve()
+            logger.info(f"📁 SMI path resolved: {smi_path} (exists: {smi_path.exists()})")
+        
         # 진행도 초기화
         _update_progress(course_id, 0, "처리 시작")
         
@@ -111,28 +128,52 @@ def process_course_assets_wrapper(
         try:
             from ai.pipelines.processor import process_course_assets
             # 백엔드 A의 함수가 있으면 호출
-            _update_progress(course_id, 10, "백엔드 A 파이프라인 시작")
+            _update_progress(course_id, 10, "파이프라인 시작")
+            
+            # 진행률 업데이트 콜백 함수 생성
+            def update_progress_callback(progress: int, message: str) -> None:
+                _update_progress(course_id, progress, message)
+            
             result = process_course_assets(
                 course_id=course_id,
                 instructor_id=instructor_id,
                 video_path=video_path,
                 audio_path=audio_path,
                 pdf_path=pdf_path,
+                smi_path=smi_path,
+                update_progress=update_progress_callback,
             )
             
             # 처리 결과 확인
             if result.get("status") == "completed":
                 ingested_count = result.get("ingested_count", 0)
+                transcript_path = result.get("transcript_path")  # STT 결과 파일 경로
                 logger.info(f"Course {course_id} processed successfully via backend A processor (ingested: {ingested_count})")
                 _update_progress(course_id, 100, f"처리 완료 (인제스트: {ingested_count}개)")
                 
-                # DB 상태를 completed로 업데이트
+                # DB 상태를 completed로 업데이트 및 transcript_path 저장
                 with Session(engine) as session:
                     course = session.get(Course, course_id)
                     if course:
                         course.status = CourseStatus.completed
                         course.progress = 100
                         session.commit()
+                    
+                    # Video/Audio 레코드에 transcript_path 저장
+                    if transcript_path:
+                        # video_path 또는 audio_path 중 처리된 것 찾기
+                        target_path = video_path or audio_path
+                        if target_path:
+                            videos = session.exec(
+                                select(Video).where(
+                                    Video.course_id == course_id,
+                                    Video.filename == target_path.name
+                                )
+                            ).all()
+                            for vid in videos:
+                                vid.transcript_path = transcript_path
+                            session.commit()
+                            logger.info(f"Transcript path saved to Video record: {transcript_path}")
             else:
                 # 처리 실패
                 error_msg = result.get("error", "알 수 없는 오류")
@@ -158,6 +199,7 @@ def process_course_assets_wrapper(
                 video_path=video_path,
                 audio_path=audio_path,
                 pdf_path=pdf_path,
+                smi_path=smi_path,
             )
     except Exception as e:
         logger.error(f"Error processing course {course_id}: {e}", exc_info=True)
@@ -204,6 +246,7 @@ def _fallback_process_course_assets(
     video_path: Optional[Path] = None,
     audio_path: Optional[Path] = None,
     pdf_path: Optional[Path] = None,
+    smi_path: Optional[Path] = None,
 ) -> None:
     """
     폴백 처리 함수 - 실제 STT, 임베딩, 페르소나 생성 수행
@@ -231,30 +274,334 @@ def _fallback_process_course_assets(
         logger.info(f"Starting processing for course {course_id}")
         texts: list[str] = []
         
-        # 비디오 처리 (STT)
-        if video_path:
+        # SMI 자막 파일이 있으면 STT 건너뛰고 SMI 파싱
+        if smi_path:
             try:
+                logger.info(f"📝 SMI subtitle file detected: {smi_path}")
+                _update_progress(course_id, 10, "SMI 자막 파일 파싱 중...")
+                
+                from ai.services.smi_parser import parse_smi_file
+                import json
+                
+                # SMI 파일 파싱
+                transcript_result = parse_smi_file(smi_path)
+                transcript_text = transcript_result.get("text", "")
+                segments = transcript_result.get("segments", [])
+                
+                logger.info(f"✅ SMI parsed: {len(transcript_text)} chars, {len(segments)} segments")
+                
+                # Transcript JSON 저장
+                from core.config import AppSettings
+                app_settings = AppSettings()
+                course_dir = app_settings.uploads_dir / instructor_id / course_id
+                course_dir.mkdir(parents=True, exist_ok=True)
+                
+                transcript_filename = f"transcript_{smi_path.stem}.json"
+                transcript_file_path = course_dir / transcript_filename
+                
+                transcript_data = {
+                    "text": transcript_text,
+                    "segments": segments,
+                    "source_file": smi_path.name,
+                    "course_id": course_id,
+                    "instructor_id": instructor_id,
+                }
+                
+                with transcript_file_path.open("w", encoding="utf-8") as f:
+                    json.dump(transcript_data, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"✅ Transcript JSON saved: {transcript_file_path}")
+                
+                _update_progress(course_id, 40, "SMI 자막 파일 파싱 완료")
+                
+                # 임베딩 처리로 진행
+                if transcript_text:
+                    texts.append(transcript_text)
+                    
+                    # 세그먼트 임베딩
+                    _update_progress(course_id, 50, "자막 세그먼트 임베딩 중...")
+                    for i, seg in enumerate(segments):
+                        seg_text = seg.get("text", "")
+                        if seg_text:
+                            pipeline.ingest_text(
+                                seg_text,
+                                course_id=course_id,
+                                metadata={
+                                    "type": "audio_segment",
+                                    "start": seg.get("start", 0.0),
+                                    "end": seg.get("end", 0.0),
+                                    "start_formatted": seg.get("start_formatted", ""),
+                                    "end_formatted": seg.get("end_formatted", ""),
+                                }
+                            )
+                    _update_progress(course_id, 60, "자막 세그먼트 임베딩 완료")
+                
+            except Exception as e:
+                logger.error(f"❌ SMI parsing failed: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+                raise
+        
+        # 오디오 파일 우선 처리 (MP3 등), 없으면 비디오 처리
+        elif audio_path:
+            try:
+                # 파일 경로 확인 및 정규화
+                if not isinstance(audio_path, Path):
+                    audio_path = Path(audio_path)
+                
+                # 절대 경로로 변환
+                if not audio_path.is_absolute():
+                    audio_path = audio_path.resolve()
+                
+                logger.info(f"📁 Audio file path: {audio_path}")
+                logger.info(f"📁 Audio file exists: {audio_path.exists()}")
+                
+                if not audio_path.exists():
+                    # 파일이 없으면 상대 경로로도 시도
+                    from core.config import AppSettings
+                    app_settings = AppSettings()
+                    potential_path = app_settings.uploads_dir / instructor_id / course_id / audio_path.name
+                    if potential_path.exists():
+                        audio_path = potential_path.resolve()
+                        logger.info(f"📁 Found audio file at alternative path: {audio_path}")
+                    else:
+                        error_msg = f"오디오 파일을 찾을 수 없습니다: {audio_path} (also tried: {potential_path})"
+                        logger.error(f"❌ {error_msg}")
+                        raise FileNotFoundError(error_msg)
+                
+                logger.info(f"🎤 Starting STT for audio: {audio_path}")
+                _update_progress(course_id, 10, "오디오 음성 인식(STT) 시작 (무료 로컬 Whisper 사용)")
+                
+                # 로컬 Whisper 사용 (무료, API 키 불필요)
+                logger.info(f"✅ Using local Whisper (FREE, no API key needed)")
+                
+                # 첫 업로드이므로 무조건 STT 실행
+                logger.info(f"🔄 Running STT (force_retranscribe=True to ensure fresh transcription)...")
+                transcript_result = transcribe_video(
+                    str(audio_path), 
+                    settings=settings,
+                    transcript_path=None,  # 기존 파일 무시하고 새로 생성
+                    force_retranscribe=True,  # 강제로 STT 실행
+                    instructor_id=instructor_id,
+                    course_id=course_id,
+                )
+                _update_progress(course_id, 40, "오디오 음성 인식(STT) 완료")
+                transcript_text = transcript_result.get("text", "")
+                segments = transcript_result.get("segments", [])
+                
+                logger.info(f"📝 STT result - text length: {len(transcript_text)}, segments: {len(segments)}")
+                
+                # STT 실패 체크 - placeholder나 에러 메시지면 저장하지 않음
+                transcript_lower = transcript_text.lower()
+                if ("placeholder" in transcript_lower or 
+                    "transcription failed" in transcript_lower or
+                    "error" in transcript_lower and "failed" in transcript_lower):
+                    error_msg = f"오디오 STT가 실패했습니다: {transcript_text[:100]}"
+                    logger.error(f"❌ {error_msg}")
+                    raise ValueError(error_msg)
+                
+                if not transcript_text or not transcript_text.strip():
+                    error_msg = f"오디오 STT 결과가 비어있습니다."
+                    logger.error(f"❌ {error_msg}")
+                    raise ValueError(error_msg)
+                
+                # STT 결과를 파일로 저장
+                transcript_path = None
+                if transcript_text:
+                    try:
+                        from core.config import AppSettings
+                        import json
+                        
+                        app_settings = AppSettings()
+                        course_dir = app_settings.uploads_dir / instructor_id / course_id
+                        course_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        # transcript 파일명: transcript_{원본파일명}.json
+                        transcript_filename = f"transcript_{audio_path.stem}.json"
+                        transcript_file_path = course_dir / transcript_filename
+                        
+                        # JSON 형식으로 저장 (전체 텍스트 + 세그먼트 정보)
+                        transcript_data = {
+                            "text": transcript_text,
+                            "segments": segments,
+                            "source_file": audio_path.name,
+                            "course_id": course_id,
+                            "instructor_id": instructor_id,
+                        }
+                        
+                        logger.info(f"Attempting to save transcript to: {transcript_file_path}")
+                        logger.info(f"Transcript text length: {len(transcript_text)}")
+                        
+                        with transcript_file_path.open("w", encoding="utf-8") as f:
+                            json.dump(transcript_data, f, ensure_ascii=False, indent=2)
+                        
+                        # 파일이 실제로 저장되었는지 확인
+                        if transcript_file_path.exists():
+                            file_size = transcript_file_path.stat().st_size
+                            transcript_path = str(transcript_file_path)
+                            logger.info(f"✅ STT transcript JSON saved successfully: {transcript_path} (size: {file_size} bytes)")
+                        else:
+                            logger.error(f"❌ Transcript file was not created: {transcript_file_path}")
+                    except Exception as e:
+                        import traceback
+                        logger.error(f"❌ Failed to save transcript file: {e}")
+                        logger.error(f"Error details: {traceback.format_exc()}")
+                        # 파일 저장 실패해도 계속 진행
+                
+                if transcript_text:
+                    # 전체 텍스트 저장
+                    texts.append(transcript_text)
+                    
+                    # 세그먼트별로 임베딩 및 벡터 DB 저장 (타임스탬프 포함)
+                    logger.info(f"Processing {len(segments)} audio segments for embedding")
+                    segment_texts = []
+                    for seg in segments:
+                        seg_text = seg.get("text", "").strip()
+                        if seg_text:
+                            start_time = seg.get("start", 0.0)
+                            segment_texts.append(seg_text)
+                    
+                    if segment_texts:
+                        _update_progress(course_id, 50, "오디오 세그먼트 임베딩 생성 중")
+                        ingested = pipeline.ingest_texts(
+                            segment_texts,
+                            course_id=course_id,
+                            metadata={"source": "audio", "filename": audio_path.name}
+                        )
+                        ingested_count = ingested.get("ingested_count", 0)
+                        _update_progress(course_id, 60, "오디오 세그먼트 임베딩 완료")
+                        logger.info(f"✅ Ingested {ingested_count} audio segments into vector DB")
+                
+                # Audio 레코드 생성
+                absolute_path = audio_path.resolve()
+                vid = Video(
+                    course_id=course_id,
+                    filename=audio_path.name,
+                    storage_path=str(absolute_path),
+                    filetype="audio",
+                    transcript_path=transcript_path,
+                )
+                session.add(vid)
+                session.commit()
+                logger.info(f"Audio record created: {audio_path.name}, transcript_path: {transcript_path}")
+                
+            except (FileNotFoundError, ValueError) as e:
+                error_msg = f"오디오 STT 처리 오류 ({audio_path.name if audio_path else 'unknown'}): {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                course.status = CourseStatus.failed
+                course.progress = 0
+                session.commit()
+                raise Exception(error_msg)
+            except Exception as e:
+                error_msg = f"오디오 처리 중 예상치 못한 오류: {str(e)}"
+                logger.error(f"❌ {error_msg}")
+                import traceback
+                logger.error(traceback.format_exc())
+                course.status = CourseStatus.failed
+                course.progress = 0
+                session.commit()
+                raise Exception(error_msg)
+        
+        # 비디오 처리 (STT) - 오디오 파일이 없을 때만
+        elif video_path:
+            try:
+                # 파일 경로 확인 및 정규화
+                video_path = Path(video_path).resolve()
+                logger.info(f"📁 Video file path: {video_path}")
+                logger.info(f"📁 Video file exists: {video_path.exists()}")
+                logger.info(f"📁 Video file absolute path: {video_path.absolute()}")
+                
                 if not video_path.exists():
-                    raise FileNotFoundError(f"비디오 파일을 찾을 수 없습니다: {video_path}")
+                    error_msg = f"비디오 파일을 찾을 수 없습니다: {video_path}"
+                    logger.error(f"❌ {error_msg}")
+                    raise FileNotFoundError(error_msg)
                 
-                logger.info(f"Transcribing video: {video_path}")
-                _update_progress(course_id, 10, "음성 인식(STT) 시작")
+                logger.info(f"🎤 Starting STT for video: {video_path}")
+                _update_progress(course_id, 10, "음성 인식(STT) 시작 (무료 로컬 Whisper 사용)")
                 
-                # OPENAI_API_KEY 확인
-                if not settings.openai_api_key:
-                    raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일에 OPENAI_API_KEY를 추가하세요.")
+                # 로컬 Whisper 사용 (무료, API 키 불필요)
+                logger.info(f"✅ Using local Whisper (FREE, no API key needed)")
                 
-                transcript_result = transcribe_video(str(video_path), settings=settings)
+                # 첫 업로드이므로 무조건 STT 실행 (force_retranscribe=True)
+                # 기존 transcript 파일이 있어도 재생성 (한 번만 실행되도록 보장)
+                logger.info(f"🔄 Running STT (force_retranscribe=True to ensure fresh transcription)...")
+                transcript_result = transcribe_video(
+                    str(video_path), 
+                    settings=settings,
+                    transcript_path=None,  # 기존 파일 무시하고 새로 생성
+                    force_retranscribe=True,  # 강제로 STT 실행
+                    instructor_id=instructor_id,
+                    course_id=course_id,
+                )
                 _update_progress(course_id, 40, "음성 인식(STT) 완료")
                 transcript_text = transcript_result.get("text", "")
                 segments = transcript_result.get("segments", [])
                 
-                # STT placeholder 체크
-                if "placeholder" in transcript_text.lower() or not transcript_text.strip():
-                    raise ValueError(
-                        "STT 처리가 실패했습니다. OPENAI_API_KEY가 설정되어 있는지 확인하세요. "
-                        "또는 파일 형식이 지원되지 않을 수 있습니다."
+                logger.info(f"📝 STT result - text length: {len(transcript_text)}, segments: {len(segments)}")
+                
+                # STT 실패 체크 - placeholder나 에러 메시지면 저장하지 않음
+                transcript_lower = transcript_text.lower()
+                if ("placeholder" in transcript_lower or 
+                    "transcription failed" in transcript_lower or
+                    "failed:" in transcript_lower or
+                    "error" in transcript_lower):
+                    error_msg = (
+                        f"❌ STT가 실패했습니다. "
+                        f"반환된 메시지: {transcript_text[:200]}... "
+                        f"서버 로그를 확인하세요."
                     )
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+                
+                if not transcript_text or not transcript_text.strip():
+                    error_msg = "STT 결과가 비어있습니다. 서버 로그를 확인하세요."
+                    logger.error(f"❌ {error_msg}")
+                    raise ValueError(error_msg)
+                
+                logger.info(f"✅ STT 성공! 전사된 텍스트 길이: {len(transcript_text)} 문자")
+                
+                # STT 결과를 파일로 저장
+                transcript_path = None
+                if transcript_text:
+                    try:
+                        from core.config import AppSettings
+                        import json
+                        
+                        app_settings = AppSettings()
+                        course_dir = app_settings.uploads_dir / instructor_id / course_id
+                        course_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        # transcript 파일명: transcript_{원본파일명}.json
+                        transcript_filename = f"transcript_{video_path.stem}.json"
+                        transcript_file_path = course_dir / transcript_filename
+                        
+                        # JSON 형식으로 저장 (전체 텍스트 + 세그먼트 정보)
+                        transcript_data = {
+                            "text": transcript_text,
+                            "segments": segments,
+                            "source_file": video_path.name,
+                            "course_id": course_id,
+                            "instructor_id": instructor_id,
+                        }
+                        
+                        logger.info(f"Attempting to save transcript to: {transcript_file_path}")
+                        logger.info(f"Transcript text length: {len(transcript_text)}")
+                        
+                        with transcript_file_path.open("w", encoding="utf-8") as f:
+                            json.dump(transcript_data, f, ensure_ascii=False, indent=2)
+                        
+                        # 파일이 실제로 저장되었는지 확인
+                        if transcript_file_path.exists():
+                            file_size = transcript_file_path.stat().st_size
+                            transcript_path = str(transcript_file_path)
+                            logger.info(f"✅ STT transcript JSON saved successfully: {transcript_path} (size: {file_size} bytes)")
+                        else:
+                            logger.error(f"❌ Transcript file was not created: {transcript_file_path}")
+                    except Exception as e:
+                        import traceback
+                        logger.error(f"❌ Failed to save transcript file: {e}")
+                        logger.error(f"Error details: {traceback.format_exc()}")
+                        # 파일 저장 실패해도 계속 진행
                 
                 if transcript_text:
                     # 전체 텍스트 저장
@@ -318,10 +665,11 @@ def _fallback_process_course_assets(
                     filename=video_path.name,
                     storage_path=str(absolute_path),
                     filetype=file_type,
+                    transcript_path=transcript_path,  # STT 결과 파일 경로 저장
                 )
                 session.add(vid)
                 session.commit()
-                logger.info(f"Video record created: {video_path.name}")
+                logger.info(f"Video record created: {video_path.name}, transcript_path: {transcript_path}")
                 
             except FileNotFoundError as e:
                 error_msg = f"파일을 찾을 수 없습니다: {e}"
@@ -345,12 +693,115 @@ def _fallback_process_course_assets(
         # 오디오 처리 (STT)
         if audio_path:
             try:
-                logger.info(f"Transcribing audio: {audio_path}")
-                _update_progress(course_id, 10, "오디오 음성 인식(STT) 시작")
-                transcript_result = transcribe_video(str(audio_path), settings=settings)
+                # 파일 경로 확인 및 정규화
+                if not isinstance(audio_path, Path):
+                    audio_path = Path(audio_path)
+                
+                # 절대 경로로 변환
+                if not audio_path.is_absolute():
+                    audio_path = audio_path.resolve()
+                
+                logger.info(f"📁 Audio file path: {audio_path}")
+                logger.info(f"📁 Audio file exists: {audio_path.exists()}")
+                
+                if not audio_path.exists():
+                    # 파일이 없으면 상대 경로로도 시도
+                    from core.config import AppSettings
+                    app_settings = AppSettings()
+                    potential_path = app_settings.uploads_dir / instructor_id / course_id / audio_path.name
+                    if potential_path.exists():
+                        audio_path = potential_path.resolve()
+                        logger.info(f"📁 Found audio file at alternative path: {audio_path}")
+                    else:
+                        error_msg = f"오디오 파일을 찾을 수 없습니다: {audio_path} (also tried: {potential_path})"
+                        logger.error(f"❌ {error_msg}")
+                        raise FileNotFoundError(error_msg)
+                
+                logger.info(f"🎤 Starting STT for audio: {audio_path}")
+                _update_progress(course_id, 10, "오디오 음성 인식(STT) 시작 (무료 로컬 Whisper 사용)")
+                
+                # 로컬 Whisper 사용 (무료, API 키 불필요)
+                logger.info(f"✅ Using local Whisper (FREE, no API key needed)")
+                
+                # 첫 업로드이므로 무조건 STT 실행
+                logger.info(f"🔄 Running STT (force_retranscribe=True to ensure fresh transcription)...")
+                transcript_result = transcribe_video(
+                    str(audio_path), 
+                    settings=settings,
+                    transcript_path=None,  # 기존 파일 무시하고 새로 생성
+                    force_retranscribe=True,  # 강제로 STT 실행
+                    instructor_id=instructor_id,
+                    course_id=course_id,
+                )
                 _update_progress(course_id, 40, "오디오 음성 인식(STT) 완료")
                 transcript_text = transcript_result.get("text", "")
                 segments = transcript_result.get("segments", [])
+                
+                logger.info(f"📝 STT result - text length: {len(transcript_text)}, segments: {len(segments)}")
+                
+                # STT 실패 체크 - placeholder나 에러 메시지면 저장하지 않음
+                transcript_lower = transcript_text.lower()
+                if ("placeholder" in transcript_lower or 
+                    "transcription failed" in transcript_lower or
+                    "failed:" in transcript_lower or
+                    "error" in transcript_lower):
+                    error_msg = (
+                        f"❌ STT가 실패했습니다. "
+                        f"반환된 메시지: {transcript_text[:200]}... "
+                        f"서버 로그를 확인하세요."
+                    )
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+                
+                if not transcript_text or not transcript_text.strip():
+                    error_msg = "STT 결과가 비어있습니다. 서버 로그를 확인하세요."
+                    logger.error(f"❌ {error_msg}")
+                    raise ValueError(error_msg)
+                
+                logger.info(f"✅ STT 성공! 전사된 텍스트 길이: {len(transcript_text)} 문자")
+                
+                # STT 결과를 파일로 저장
+                transcript_path = None
+                if transcript_text:
+                    try:
+                        from core.config import AppSettings
+                        import json
+                        
+                        app_settings = AppSettings()
+                        course_dir = app_settings.uploads_dir / instructor_id / course_id
+                        course_dir.mkdir(parents=True, exist_ok=True)
+                        
+                        # transcript 파일명: transcript_{원본파일명}.json
+                        transcript_filename = f"transcript_{audio_path.stem}.json"
+                        transcript_file_path = course_dir / transcript_filename
+                        
+                        # JSON 형식으로 저장 (전체 텍스트 + 세그먼트 정보)
+                        transcript_data = {
+                            "text": transcript_text,
+                            "segments": segments,
+                            "source_file": audio_path.name,
+                            "course_id": course_id,
+                            "instructor_id": instructor_id,
+                        }
+                        
+                        logger.info(f"Attempting to save transcript to: {transcript_file_path}")
+                        logger.info(f"Transcript text length: {len(transcript_text)}")
+                        
+                        with transcript_file_path.open("w", encoding="utf-8") as f:
+                            json.dump(transcript_data, f, ensure_ascii=False, indent=2)
+                        
+                        # 파일이 실제로 저장되었는지 확인
+                        if transcript_file_path.exists():
+                            file_size = transcript_file_path.stat().st_size
+                            transcript_path = str(transcript_file_path)
+                            logger.info(f"✅ STT transcript JSON saved successfully: {transcript_path} (size: {file_size} bytes)")
+                        else:
+                            logger.error(f"❌ Transcript file was not created: {transcript_file_path}")
+                    except Exception as e:
+                        import traceback
+                        logger.error(f"❌ Failed to save transcript file: {e}")
+                        logger.error(f"Error details: {traceback.format_exc()}")
+                        # 파일 저장 실패해도 계속 진행
                 
                 if transcript_text:
                     # 전체 텍스트 저장
@@ -405,10 +856,11 @@ def _fallback_process_course_assets(
                     filename=audio_path.name,
                     storage_path=str(absolute_audio_path),
                     filetype="audio",
+                    transcript_path=transcript_path,  # STT 결과 파일 경로 저장
                 )
                 session.add(audio_file)
                 session.commit()
-                logger.info(f"Audio record created: {audio_path.name}")
+                logger.info(f"Audio record created: {audio_path.name}, transcript_path: {transcript_path}")
                 
             except Exception as e:
                 logger.error(f"Audio processing error: {e}", exc_info=True)
@@ -439,6 +891,7 @@ def _fallback_process_course_assets(
                 logger.error(f"PDF processing error: {e}", exc_info=True)
         
         # 전체 텍스트 임베딩 및 벡터 DB 저장 (세그먼트는 이미 저장됨)
+        logger.info(f"📊 Total texts collected: {len(texts)}")
         if texts:
             try:
                 from ai.services.embeddings import embed_texts
@@ -524,15 +977,18 @@ def _fallback_process_course_assets(
                 error_msg = f"벡터 DB 저장 중 오류 발생: {str(e)}"
                 logger.error(f"Vector DB ingestion error: {error_msg}", exc_info=True)
                 course.status = CourseStatus.failed
+                course.progress = 0
                 session.commit()
                 raise Exception(error_msg)
+        else:
+            logger.warning(f"⚠️ No texts to embed. STT may have failed or returned empty text.")
         
-        # 처리 완료
+        # 처리 완료 (texts가 없어도 STT가 완료되었으면 완료로 표시)
         course = session.get(Course, course_id)
         if course:
             course.status = CourseStatus.completed
             course.progress = 100
             course.updated_at = datetime.utcnow()
             session.commit()
-            logger.info(f"Course {course_id} processing completed successfully")
+            logger.info(f"✅ Course {course_id} processing completed successfully (progress: 100%)")
 

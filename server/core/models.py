@@ -29,6 +29,21 @@ class Course(SQLModel, table=True):
     id: str = Field(primary_key=True, index=True)
     instructor_id: str = Field(foreign_key="instructor.id")
     title: Optional[str] = None
+    category: Optional[str] = Field(default=None, index=True, description="강의 카테고리")
+    total_chapters: Optional[int] = Field(
+        default=None,
+        description="전체 강의 수 (참고용, 부모 강의에만 사용)"
+    )
+    parent_course_id: Optional[str] = Field(
+        default=None, 
+        foreign_key="course.id", 
+        index=True,
+        description="부모 강의 ID (챕터인 경우)"
+    )
+    chapter_number: Optional[int] = Field(
+        default=None,
+        description="챕터 번호 (1, 2, 3...)"
+    )
     status: CourseStatus = Field(default=CourseStatus.processing)
     progress: int = Field(default=0, description="처리 진행도 (0-100)")  # 0-100%
     created_at: datetime = Field(default_factory=datetime.utcnow)

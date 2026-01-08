@@ -225,10 +225,6 @@ export default function StudentPage() {
 
                     {/* 강의 정보 */}
                     <div className="space-y-2.5 border-t border-slate-100 pt-4">
-                      <div className="flex items-center gap-2 text-sm text-slate-600">
-                        <User className="h-4 w-4 text-slate-400" />
-                        <span className="truncate">{course.instructor_id}</span>
-                    </div>
                       {course.created_at && (
                         <div className="flex items-center gap-2 text-sm text-slate-600">
                           <Clock className="h-4 w-4 text-slate-400" />

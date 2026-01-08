@@ -21,6 +21,7 @@ class AISettings:
 
     openai_api_key: Optional[str] = None
     google_api_key: Optional[str] = None
+    google_credentials_path: Optional[str] = None  # Google 서비스 계정 키 파일 경로
     chroma_db_path: str = "data/chroma"
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
@@ -41,8 +42,19 @@ class AISettings:
             self.openai_api_key = os.getenv("OPENAI_API_KEY")
         if self.google_api_key is None:
             self.google_api_key = os.getenv("GOOGLE_API_KEY")
+        if self.google_credentials_path is None:
+            self.google_credentials_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
         if self.chroma_db_path == "data/chroma":
             self.chroma_db_path = os.getenv("CHROMA_DB_PATH", "data/chroma")
+        
+        # chroma_db_path를 절대 경로로 변환 (server 폴더 기준)
+        if self.chroma_db_path:
+            chroma_path = Path(self.chroma_db_path)
+            if not chroma_path.is_absolute():
+                # server/ai/config.py -> server
+                server_dir = Path(__file__).resolve().parent.parent
+                self.chroma_db_path = str((server_dir / self.chroma_db_path).resolve())
+        
         if self.llm_model == "gpt-4o-mini":
             self.llm_model = os.getenv("LLM_MODEL", "gpt-4o-mini")
         if self.embedding_model == "text-embedding-3-small":

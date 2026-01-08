@@ -5,7 +5,7 @@
 """
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field
 
 # 기존 스키마들 import
 from api.schemas import (
@@ -37,7 +37,7 @@ class RegisterInstructorRequest(BaseModel):
     """강사 등록 요청"""
     id: str = Field(..., description="강사 ID")
     name: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     password: str = Field(..., description="비밀번호")
 
 
@@ -45,7 +45,7 @@ class RegisterStudentRequest(BaseModel):
     """학생 등록 요청"""
     id: str = Field(..., description="학생 ID")
     name: Optional[str] = None
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     password: str = Field(..., description="비밀번호")
 
 
@@ -76,4 +76,25 @@ class SafeChatResponse(ChatResponse):
     """안전한 채팅 응답 (가드레일 적용)"""
     is_safe: bool = True
     filtered: bool = False
+
+
+# 강의/강사 수정 관련 스키마
+class UpdateCourseRequest(BaseModel):
+    """강의 정보 수정 요청"""
+    title: Optional[str] = None
+    category: Optional[str] = None
+
+
+class UpdateInstructorRequest(BaseModel):
+    """강사 정보 수정 요청"""
+    name: Optional[str] = None
+    email: Optional[str] = None
+
+
+class CreateCourseRequest(BaseModel):
+    """강의 목록 생성 요청 (파일 없이, 부모 강의만)"""
+    course_id: str = Field(..., description="강의 목록 ID")
+    title: Optional[str] = None
+    category: Optional[str] = None
+    total_chapters: Optional[int] = Field(None, description="전체 강의 수 (참고용)")
 

@@ -14,6 +14,7 @@ class QueryRequest(BaseModel):
     course_id: str
     question: str
     conversation_id: Optional[str] = None
+    current_time: Optional[float] = None  # 현재 비디오 재생 시간 (초)
 
 
 class ChatMessage(BaseModel):
@@ -75,6 +76,7 @@ class QuizSubmitRequest(BaseModel):
     course_id: str
     quiz_id: Optional[str] = None
     answers: dict[int, int]  # question_id -> selected_option_index
+    questions: Optional[list] = None  # 퀴즈 문제 데이터 (채점용)
 
 
 class QuizResult(BaseModel):

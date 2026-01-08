@@ -2,10 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { CheckCircle2, XCircle, Lightbulb, AlertCircle, Trophy, RefreshCw, Send } from "lucide-react";
-import { apiPost, handleApiError } from "../lib/api";
+import { apiPost, apiGet, handleApiError } from "../lib/api";
 
 type Props = {
   courseId: string;
+};
+
+type CourseInfo = {
+  id: string;
+  title: string;
+  category?: string;
+  instructor_name?: string;
 };
 
 type QuizQuestion = {
@@ -44,6 +51,7 @@ export default function Quiz({ courseId }: Props) {
   const [isGraded, setIsGraded] = useState(false);
   const [result, setResult] = useState<QuizResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [courseInfo, setCourseInfo] = useState<CourseInfo | null>(null);
 
   const generateQuiz = async () => {
     setIsLoading(true);
@@ -183,10 +191,12 @@ export default function Quiz({ courseId }: Props) {
         }
       });
 
+      // 퀴즈 데이터를 함께 보내서 정확한 채점 보장
       const data = await apiPost<QuizResult>("/api/quiz/submit", {
         course_id: courseId,
         quiz_id: quiz.quiz_id,
         answers: answers,
+        questions: quiz.questions, // 퀴즈 데이터 전송
       });
 
       setResult({
@@ -245,6 +255,19 @@ export default function Quiz({ courseId }: Props) {
   };
 
   useEffect(() => {
+    // 강의 정보 가져오기
+    const fetchCourseInfo = async () => {
+      try {
+        const data = await apiGet<CourseInfo>(`/api/courses/${courseId}`);
+        setCourseInfo(data);
+      } catch (err) {
+        console.error("강의 정보 가져오기 오류:", err);
+        // 오류 시 기본값 설정
+        setCourseInfo({ id: courseId, title: courseId });
+      }
+    };
+    
+    fetchCourseInfo();
     // 컴포넌트 마운트 시 자동으로 퀴즈 생성
     generateQuiz();
   }, [courseId]);
@@ -252,7 +275,7 @@ export default function Quiz({ courseId }: Props) {
   return (
     <div className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900">
-        강의 퀴즈 · {courseId}
+        강의 퀴즈 · {courseInfo?.title || "로딩 중..."}
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">

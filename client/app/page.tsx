@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, Upload, GraduationCap, PlayCircle } from "lucide-react";
+import { BookOpen, GraduationCap, PlayCircle, LogIn, ArrowRight } from "lucide-react";
 
 export default function Home() {
   return (
@@ -12,30 +12,31 @@ export default function Home() {
             <span>옆강</span>
           </div>
           <h1 className="mb-4 text-5xl font-bold text-slate-900">
-            MAIN 화면
+            MAIN 페이지
           </h1>
           <p className="mx-auto max-w-2xl text-lg text-slate-600">
-            강의 영상을 업로드하고 AI 튜터와 함께 학습하세요.
+            강의 영상을 시청하고 AI 튜터와 실시간으로 질문하며 학습하세요.
           </p>
-      </header>
+        </header>
 
-        {/* 메인 액션 버튼 */}
+        {/* 메인 액션 버튼 - 학생 중심 */}
         <div className="mb-20 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-        <Link
-          href="/instructor/upload"
-            className="group flex items-center gap-3 rounded-xl bg-blue-600 px-8 py-4 text-base font-semibold text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl"
-        >
-            <Upload className="h-5 w-5" />
-            <span>강의 업로드</span>
-        </Link>
-        <Link
-          href="/student"
-            className="group flex items-center gap-3 rounded-xl border-2 border-slate-300 bg-white px-8 py-4 text-base font-semibold text-slate-700 transition-all hover:border-blue-500 hover:bg-blue-50"
-        >
-            <GraduationCap className="h-5 w-5" />
-            <span>강의 목록 보기</span>
-        </Link>
-      </div>
+          <Link
+            href="/student/courses"
+            className="group flex items-center gap-3 rounded-xl bg-blue-600 px-10 py-5 text-lg font-semibold text-white shadow-lg transition-all hover:bg-blue-700 hover:shadow-xl hover:scale-105"
+          >
+            <GraduationCap className="h-6 w-6" />
+            <span>강의 목록 보러가기</span>
+            <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+          </Link>
+          <Link
+            href="/instructor/login"
+            className="group flex items-center gap-3 rounded-xl border-2 border-slate-300 bg-white px-8 py-5 text-lg font-semibold text-slate-700 transition-all hover:border-blue-500 hover:bg-blue-50"
+          >
+            <LogIn className="h-6 w-6" />
+            <span>강사 로그인</span>
+          </Link>
+        </div>
 
         {/* 기능 소개 */}
         <div className="grid gap-6 md:grid-cols-3">
@@ -73,7 +74,7 @@ export default function Home() {
             <p className="text-sm text-slate-600">
               자동 생성된 요약노트와 퀴즈를 통해 학습 내용을 효과적으로 복습할 수 있습니다.
             </p>
-        </div>
+          </div>
         </div>
       </div>
     </main>

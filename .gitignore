@@ -86,3 +86,37 @@ htmlcov/
 *.cover
 .hypothesis/
 
+# TypeScript
+*.tsbuildinfo
+
+# Next.js
+.vercel/
+.swc/
+
+# Python additional
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Additional environment files
+.env.production
+.env.development
+.env.test
+
+# SMI subtitle files (can be large)
+*.smi
+
+# PDF files (can be large, but ref/book/ structure is maintained)
+# Uncomment if you want to exclude PDFs:
+# *.pdf
+
+# Server data directory (explicit)
+server/data/
+
+# Additional OS files
+.AppleDouble
+ehthumbs.db
+

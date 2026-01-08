@@ -129,6 +129,21 @@ export async function apiGet<T>(
 }
 
 /**
+ * PATCH 요청 헬퍼
+ */
+export async function apiPatch<T>(
+  endpoint: string,
+  data?: unknown,
+  options?: RequestInit
+): Promise<T> {
+  return apiFetch<T>(endpoint, {
+    method: "PATCH",
+    body: data ? JSON.stringify(data) : undefined,
+    ...options,
+  });
+}
+
+/**
  * DELETE 요청 헬퍼
  */
 export async function apiDelete<T>(

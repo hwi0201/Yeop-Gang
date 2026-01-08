@@ -14,12 +14,10 @@ class AppSettings:
     def uploads_dir(self) -> Path:
         """Returns absolute path to uploads directory."""
         base_path = Path(self.data_root)
-        # 상대 경로면 프로젝트 루트 기준으로 절대 경로 변환
+        # 상대 경로면 server 폴더 기준으로 절대 경로 변환
         if not base_path.is_absolute():
-            # server/ 디렉토리에서 실행된다고 가정
-            # server/core/config.py -> server -> project root
+            # server/core/config.py -> server
             server_dir = Path(__file__).resolve().parent.parent
-            project_root = server_dir.parent
-            base_path = project_root / self.data_root
+            base_path = server_dir / self.data_root
         return base_path / "uploads"
 
