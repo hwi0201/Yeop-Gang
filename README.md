@@ -42,7 +42,7 @@
 
 ### 배포 주소
 
-**프로덕션**: [https://yeop-gang.onrender.com](https://yeop-gang-t41l.onrender.com/)
+**프로덕션**: [https://yeop-gang.onrender.com](https://yeop-gang-uqfj.onrender.com/)
 
 ### 배포 구조
 
